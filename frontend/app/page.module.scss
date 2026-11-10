@@ -1,0 +1,22 @@
+.main {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 3rem 1rem;
+
+  h1 { margin: 0 0 .25rem; }
+  p { color: var(--muted); margin: 0 0 2rem; }
+}
+
+.card {
+  background: var(--card);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: .75rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.ok { color: var(--ok); }
+.bad { color: var(--bad); }

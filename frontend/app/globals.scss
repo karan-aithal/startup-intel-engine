@@ -1,0 +1,17 @@
+:root {
+  --bg: #0f1115;
+  --fg: #e8eaed;
+  --muted: #8b93a1;
+  --ok: #3ecf8e;
+  --bad: #ef5350;
+  --card: #181b21;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.5 system-ui, sans-serif;
+}
