@@ -1,0 +1,540 @@
+
+❯ <ide_opened_file>The user opened the file
+  /media/karan/NewVolume/2WebApp/2CODE/Engine/Startup Intelligence Platform —
+  Master Build Prompt v3.md in the IDE. This may or may not be related to the
+  current task.</ide_opened_file>
+
+❯ Follow the prompt and help me buld the app in phases
+
+● I'll start by reading the master build prompt.
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+● The prompt says to start with Phase 0: inspect the machine, then ask numbered
+  questions before writing any code. I'll check what I can find out myself first
+  so you only answer what I can't detect.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Found a few important things. Let me check the existing Postgres for pgvector
+  and pg_trgm.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● I've read the whole prompt and checked your machine. The prompt says Phase 0
+  starts with questions and no code until you answer them, so that's where we
+  are.
+
+  What I found on your machine
+
+  Item: OS / CPU / RAM
+  Found: Ubuntu 22.04.5, i5-8350U (4 cores, 8 threads), 15 GiB RAM with ~7 GiB
+    already in use, 28 GiB swap
+  What it means: RAM will be tight once Ollama arrives (Phase 6). I'll do the
+    memory estimate before then.
+  ────────────────────────────────────────
+  Item: Timezone
+  Found: Asia/Kolkata (IST)
+  What it means: Data stored in UTC, shown in IST.
+  ────────────────────────────────────────
+  Item: Project folder
+  Found: On an NTFS drive (fuseblk), 71 GB free
+  What it means: Problem: Python venvs, node_modules and database files run
+    slowly or break on NTFS (symlinks, permissions). /home is ext4 with 217 GB
+    free.
+  ────────────────────────────────────────
+  Item: PostgreSQL
+  Found: Versions 14, 17 and 18 installed; 18 is running on port 5432. pg_trgm
+  is
+    available, pgvector is not
+  What it means: We can use the existing PG18 instead of Docker. pgvector is one
+
+    apt install.
+  ────────────────────────────────────────
+  Item: Docker
+  Found: Not installed
+  What it means: Only needed for Prometheus and Grafana (Phase 10) if we use
+    native Postgres.
+  ────────────────────────────────────────
+  Item: Python
+  Found: 3.10 only (no 3.12)
+  What it means: I'd suggest uv. It installs Python 3.12 in your home folder
+    without sudo.
+  ────────────────────────────────────────
+  Item: Node
+  Found: v22.13.1, npm 10.9
+  What it means: Fine for Next.js.
+  ────────────────────────────────────────
+  Item: Ollama
+  Found: Not installed
+  What it means: Not needed until Phase 6.
+  ────────────────────────────────────────
+  Item: sudo
+  Found: Needs a password
+  What it means: I'll give you commands to run yourself.
+  ────────────────────────────────────────
+  Item: Git
+  Found: Folder is not a git repo
+  What it means:
+
+  Phase 0 plan
+
+  1. Set up the repo: backend/ (FastAPI), frontend/ (Next.js + SCSS), config/,
+     scripts/, docs/.
+  2. Python 3.12 via uv, with FastAPI, Pydantic v2, SQLAlchemy 2 async, Alembic
+     and structured logging.
+  3. A dedicated startup_intel database on PG18 with its own limited user, plus
+     pg_trgm and vector extensions.
+  4. .env.example and settings that are checked when the app starts.
+  5. A health endpoint that checks the API and the database.
+  6. A bare Next.js + SCSS app (no Tailwind) that calls the health endpoint.
+  7. Bash scripts: bootstrap.sh, backup.sh, restore.sh, health_check.sh.
+  8. A README (run, stop, backup, troubleshooting) and docs/decisions.md with
+     your answers.
+  9. Done when the backend, frontend and database start, the first migration
+     applies, and health checks pass.
+
+  Questions (answer by number; "ok" accepts my suggestion)
+
+  Environment
+  1. Repo location: may I build in ~/startup-intel on ext4 instead of this NTFS
+     folder? I'd copy the prompt there as PROMPT.md. (Suggested: yes)
+  2. Database: use the PG18 you already run, or a separate Postgres in Docker?
+     With PG18 you'd run sudo apt install postgresql-18-pgvector, and I'd create
+     a dedicated database and user. (Suggested: native PG18)
+  3. Docker: install Docker + Compose now, or wait until Phase 10
+     (Prometheus/Grafana)? I'll give you the official install commands to run
+     yourself. (Suggested: wait)
+  4. Python: OK to install uv in your home folder and use it for Python 3.12?
+     (Suggested: yes)
+  5. Uptime: this looks like a laptop (up 1h49m). Will it run 24/7, or only some
+     hours? This decides how much catch-up logic we need after downtime.
+  6. Ports: API on 8000 and dashboard on 3000, bound to localhost only?
+     (Suggested: yes)
+  7. Git: may I run git init and commit at the end of each phase? Any remote
+     (GitHub, private)?
+  8. Stack: confirm FastAPI, SQLAlchemy 2 async, Alembic, Next.js (latest
+     stable) with TypeScript, SCSS and npm.
+
+  Telegram
+  9. Do you have a bot token and a private supergroup with Topics turned on? If
+  not, I'll walk you through BotFather, getting the chat ID, and giving the bot
+  admin rights. (Needed in Phase 2, not Phase 0.)
+  10. Which topics do you want? The prompt suggests: India Funding, Global
+  Funding, India Hiring, Global Hiring, New Startups, Expansion Signals, Founder
+  and Community Signals, Investor Intelligence, Unverified and Risk, Digest,
+  System Health.
+
+  What to track
+  11. Which job categories matter? Options: software engineering, AI/ML/data,
+  cloud/DevOps, cybersecurity, product, design, sales, marketing, finance,
+  operations, HR, customer support, legal, leadership, internships, contract.
+  12. Which seniority levels? (intern, fresher, junior, mid, senior, lead/staff,
+  manager, director+, founding roles)
+  13. Which Indian cities get priority, and are remote-India roles included?
+  14. Any countries to include or exclude for the global stream?
+
+  Email, accounts, risky options
+  15. Do you have a dedicated email account for alerts? Gmail with an app
+  password over IMAP (needs 2-step verification on), or something else?
+  16. Which job portals do you have accounts on, and may I help you set up
+  alerts on each? (LinkedIn, Naukri, foundit, Instahyre, Wellfound, Hirist,
+  Cutshort, Internshala, Indeed)
+  17. Telethon: reading Telegram groups through a user account (a second
+  account, not your main one) risks that account being banned, because Telegram
+  restricts automated user accounts. Public channels work without it through
+  t.me/s/. Do you want Telethon at all? (Suggested: no)
+  18. Do you already hold approved Reddit API credentials? If not, Reddit stays
+  off.
+
+  Access and backups
+  19. LAN only, or remote access too? (Suggested: localhost only for now)
+  20. Where should backups go (e.g. ~/backups/startup-intel, the NTFS drive, an
+  external disk)? Daily at what time? Is the default of 7 daily + 4 weekly
+  copies fine?
+  21. How long should raw source content be kept (e.g. 90 days), apart from any
+  shorter limit a source's terms require?
+
+  Answer whatever you can now. Questions 9–21 can be partly deferred, but 1–8
+  block Phase 0 code.
+
+  Waiting for your answers.
+
+❯ /model sonnet
+  ⎿  Set model to claude-sonnet-5-5
+
+❯ <ide_opened_file>The user opened the file
+  /media/karan/NewVolume/2WebApp/2CODE/Engine/Startup Intelligence Platform —
+  Master Build Prompt v3.md in the IDE. This may or may not be related to the
+  current task.</ide_opened_file>
+
+❯ no build here itself
+  use the PG18 you already run
+  install Docker + Compose now,
+  OK to install uv in your home folder
+  it would run 12 hrs atmost uptime
+  ports yes
+  I will provide github repo for after Phase 0
+  Stack yes
+  walk you through BotFather
+  all topics , Ill decide later
+  software engineering, AI/ML/data, cloud/DevOps, cybersecurity, product,
+  design
+  ⎿  8 skills available
+
+● Understood: I'll build in ~/startup-intel on ext4, not in this NTFS folder,
+  and use your PG18. Let me install uv and check how I can reach Postgres.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● uv is installed. Postgres has no role for you, so the database setup needs
+  sudo. I'll put it in a script for you to run. Now I'll create the repo.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● API Error: Can't reach the API server — check your internet or DNS
+  (ENOTFOUND)
+
+❯ retry
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Network is back and the dependencies installed. Next I'll add the dev tools
+  and tidy the project layout.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Now the backend code: settings, logging, database, health endpoints, Alembic.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Now the first migration, the sudo-only database setup script, and the Docker
+  and bash scripts.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Now the Next.js frontend (TypeScript, SCSS, no Tailwind).
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● I'll write a minimal skeleton page that shows backend health.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● The frontend builds. Now a backend test, the docs, and a check that the
+  backend starts.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Your shell has a ROS PYTHONPATH that leaks system Python packages into the
+  venv. I'll make the scripts clear it.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Most of Phase 0 is built, but it isn't finished. Two steps need your sudo
+  password, and the full "done" check can't run until you've done them.
+
+  Built in ~/startup-intel (on ext4, not the NTFS folder). I copied the prompt
+  there as PROMPT.md.
+  - Backend: FastAPI, SQLAlchemy 2 async and Alembic on Python 3.12 (installed
+    via uv).
+    - Settings are validated at startup.
+    - Logs are structured.
+    - /health/live and /health/ready are in place. The second one checks the
+      database, the pg_trgm and vector extensions, and the migration.
+    - The first migration enables both extensions.
+  - Frontend: Next.js 16 with TypeScript and SCSS (no Tailwind). It builds, and
+    its one page shows backend health.
+  - Scripts: db_setup.sh, install_docker.sh, bootstrap.sh, run.sh,
+    health_check.sh, backup.sh and restore.sh.
+  - Docs: README.md, docs/decisions.md (your answers), and .env.example.
+
+  Checked so far: the 3 backend tests pass, lint is clean, the frontend builds,
+  and the API starts and answers on port 8000. With no database it correctly
+  reports "degraded" (503).
+
+  Your shell sets a ROS PYTHONPATH that breaks the Python environment. The
+  scripts clear it. If you run uv run or pytest by hand, run unset PYTHONPATH
+  first.
+
+  Run these two commands
+
+  cd ~/startup-intel
+  sudo bash scripts/db_setup.sh        # installs pgvector, creates the
+  startup_intel database and user, writes .env
+  sudo bash scripts/install_docker.sh  # official Docker + Compose; log out and
+  back in afterwards
+  Then tell me when both are done. I'll run scripts/bootstrap.sh and
+  scripts/run.sh, and confirm the migration applies and scripts/health_check.sh
+  passes. That is the last Phase 0 acceptance check.
+
+  Open items
+
+  - Defaults I'm assuming for your unanswered questions (12–21). Tell me if any
+    is wrong.
+    - Telethon and Reddit stay off.
+    - Access is localhost only.
+    - Backups go to ~/backups/startup-intel, 7 daily and 4 weekly.
+    - Seniority levels, priority cities, countries, the alert email account and
+      portal accounts are still undecided. They aren't needed until Phases 2
+      and 3.
+  - Git: git init is done but nothing is committed yet. I'll commit once you
+    accept Phase 0, then push when you give me the GitHub remote.
+  - Your 12-hour uptime: Phase 2 onward needs catch-up after downtime. Feeds and
+    ATS boards are fine. Hacker News and Bluesky need cursors to recover missed
+    items.
+
+  Waiting for your go after you run the two commands.
+
+❯ I have run the 2 commands
+  Docker Compose version v5.7.0
+  Log out and back in (or run 'newgrp docker') so the docker group applies.
+  karan@XLR8:~/startup-intel$ ^C
+  karan@XLR8:~/startup-intel$ newgrp docker
+  Repo-  https://github.com/karan-aithal/startup-intelligence-engine
+
+  intern, fresher, junior, mid, senior,founding roles)
+  Bangalore, karnatka, Chennai , Hyderabad
+  Remote also high priority
+  for global Include only remote any country
+  Yes I have a gmail
+  all job portals
+  can you suggest any other similar to telegram instead
+  Also for rediit as api is closing within few months, think of any other way
+  to get information from certain communities
+  local host for now, backups can go here - ~/backups/startup-intel, daily at
+  evening 8PM
+  90 days
+
+● Thanks. I'll check the setup, then run bootstrap and the health checks.
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Backend and database pass. The frontend check failed, so I'll look at its log.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● The frontend was only slow on its first request. Dev mode compiles the page
+  then, and the check timed out after 5 seconds. I'll raise that timeout and
+  rerun.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● All three checks pass. Now I'll record your answers, test the backup script,
+  and commit locally.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● The backup script printed nothing, so I'm checking whether it worked.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● The backups are written, but the script exits early when there are no weekly
+  files yet. I'll fix that and add the 8 PM daily schedule.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● My pkill also matched its own shell and cut the command short. I'll run the
+  remaining steps separately.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Phase 0 is done. The backend, frontend and database all run, migration 0001
+  applied, and scripts/health_check.sh passed (exit 0). The code is committed
+  locally on main, with your GitHub repo set as origin. I have not pushed.
+
+  What I checked
+
+  - Database: PG 18.6 with pg_trgm and vector enabled.
+  - Backend: /health/ready returns ok. The 3 tests pass.
+  - Frontend: the dashboard page loads and shows backend health.
+  - Backup: scripts/backup.sh writes dumps. I fixed a bug where it exited early
+    when there were no weekly copies yet.
+  - Not tested: restore.sh. I'll test it in Phase 10.
+  - Docker: installed (Docker 29.9.3, Compose v5.7.0). Nothing uses it until
+    Phase 10.
+  - Schedule: a daily backup at 20:00 is now in your crontab. Your laptop must
+    be on at 8 PM or that day's backup is skipped.
+
+  Your answers
+
+  They're recorded in docs/decisions.md: seniority levels, Bengaluru, Chennai,
+  Hyderabad plus remote India, remote-only for global roles, localhost only,
+  90-day raw-content retention.
+
+  Your two source questions
+
+  Alternatives to Telegram. The ones I'd consider, each to be verified in Phase
+  4 before I build it:
+  - Mastodon hashtag and profile RSS, and Bluesky Jetstream. Both are already
+    planned.
+  - Hacker News and Lobsters (lobste.rs has RSS).
+  - Discourse forums (many startup and dev communities publish RSS).
+  - Substack and Medium RSS, and Indie Hackers.
+  - YouTube channel feeds.
+  - GitHub org and release Atom feeds.
+
+  Replacing Reddit. Reddit RSS ends 13 Nov and API access is closing, so I won't
+  build it. For community signals I'd use these compliant routes instead:
+  - The sources above.
+  - Share-to-bot: you forward interesting Reddit posts to the Telegram bot by
+    hand.
+  - Google Alerts for phrases from specific communities.
+  - Reddit's own email digests for subreddits you follow, parsed by the Gmail
+    inbox connector in Phase 3.
+
+  Telethon stays off unless you decide otherwise.
+
+  Before Phase 1
+
+  1. Say go on pushing to github.com/karan-aithal/startup-intelligence-engine.
+     Do you want it private?
+  2. A bare .env is gitignored. Nothing secret is committed.
+  3. For the Gmail alert account: is it dedicated, or your personal one? A
+     dedicated account is safer. It's needed in Phase 3, not yet.
+
+  Phase 1 plan
+
+  - Tables: all of the prompt's tables and constraints, as SQLAlchemy models
+    with an Alembic migration.
+  - Source registry: toggle a connector or a single route on or off.
+  - Adapter base class: the contract from the prompt.
+  - Job queue: SKIP LOCKED claiming, leases, retries, dead-letter state, and a
+    transactional outbox.
+  - Sync cursors and the feedback table.
+  - Tests: duplicate events are rejected, and queued jobs survive a restart.
+  - Questions for you: none that block it.
+
+  Ready for Phase 1? Waiting for your go.
+
+❯ push to repo and continue to phase 1
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● The push failed because this machine has no GitHub credentials. I'll start
+  Phase 1 and give you the push options at the end. First I'll look at the model
+  design.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● No GitHub credentials exist on this machine, so I'll start Phase 1 now. I'm
+  writing the data model first: all 22 tables, plus a small worker-heartbeat
+  table.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Next I'll tidy two rough spots, then add the queue, outbox and heartbeat
+  models.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● The migration generated. I'll ignore the format-style lint rule, drop a
+  redundant constraint, and apply it.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● The schema applies cleanly with no drift from the models, and I'm moving on to
+  the queue, outbox, registry, adapter base class, and ingestion services.
+  · summary
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Now tests against the real Postgres, in a throwaway schema per run so your
+  real data is never touched.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Both failures are bugs in my tests, not in the code. The restart test didn't
+  clean up leftover rows, and the zero-cost test asserted something wrong.
+  Fixing both.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● All 16 tests pass. Now I'll update the README, commit, and retry the push.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Phase 1 is built and all 16 tests pass, but the push to GitHub failed. Phases
+  0 and 1 are committed locally (063c3c9) and not on GitHub yet.
+
+  The push
+
+  GitHub rejected it because this machine has no credentials, and it no longer
+  accepts passwords. I won't ask you to paste a token here. Run one of these in
+  a terminal yourself:
+  - Token over HTTPS: create a personal access token at github.com → Settings →
+    Developer settings (give it repo access). Then run cd ~/startup-intel && git
+    push -u origin main. Use your username and the token as the password.
+  - SSH: run ssh-keygen -t ed25519, add ~/.ssh/id_ed25519.pub to GitHub →
+    Settings → SSH keys, then run git remote set-url origin
+    git@github.com:karan-aithal/startup-intelligence-engine.git && git push -u
+    origin main.
+
+  What Phase 1 added
+
+  - Tables: all 22 from the prompt, plus worker_heartbeats. Migration 0002
+    applied, and the models and database match (alembic check finds nothing).
+  - Constraints: each rule from the prompt is enforced in the database.
+    - Source events are unique on (source, event id) and on canonical URL.
+    - ATS jobs are unique on (board, job id), and company domains are unique.
+    - Funding rounds are unique on identity_key, only when it is set.
+  - Zero-cost guard: a source with a per-read cost can't be registered unless it
+    is explicitly approved.
+  - Source registry: each route is toggled on its own, and new routes start
+    disabled. Health goes HEALTHY, then DEGRADED, then UNAVAILABLE after 3
+    failures.
+  - Adapter contract and normalized event: the five dates are separate columns,
+    and retention is set per source (default 90 days).
+  - Collection cycle (runner.py): skips disabled routes, and a failing connector
+    never crashes the others.
+  - Job queue: idempotent enqueue, SKIP LOCKED claiming, leases, backoff with
+    jitter, dead-letter state, and recovery of abandoned jobs.
+  - Notification outbox: deduplicated, with retries and recovery of alerts stuck
+    mid-send.
+
+  Acceptance criteria
+
+  ┌──────────────────────────────┬──────────────────────────────────────────┐
+  │          Criterion           │                  Status                  │
+  ├──────────────────────────────┼──────────────────────────────────────────┤
+  │ Migrations apply             │ Demonstrated                             │
+  ├──────────────────────────────┼──────────────────────────────────────────┤
+  │ A connector can be           │ Demonstrated (test with fake adapters)   │
+  │ registered and toggled       │                                          │
+  ├──────────────────────────────┼──────────────────────────────────────────┤
+  │ Duplicate source events are  │ Demonstrated (same event id and same URL │
+  │ rejected                     │  from two sources)                       │
+  ├──────────────────────────────┼──────────────────────────────────────────┤
+  │ Queued jobs survive a        │ Demonstrated, with a caveat (below)      │
+  │ restart                      │                                          │
+  └──────────────────────────────┴──────────────────────────────────────────┘
+
+  Restart caveat: I simulated the restart by closing the database connections
+  and reconnecting, with a "crashed" worker left holding a job. I did not kill a
+  real OS process. The data lives in Postgres, so a real crash behaves the same
+  way.
+
+  Notes
+
+  - Tests run in a throwaway database schema that is dropped afterwards, so your
+    real database is untouched.
+  - Gold-set precision and recall: not applicable yet. It starts in Phase 2.
+  - Dependencies added: none beyond Phase 0.
+  - Configuration needed from you: none.
+  - Commands: cd backend && uv run pytest (after unset PYTHONPATH) and uv run
+    alembic upgrade head.
+
+  For Phase 2
+
+  This phase has a lot of input from you, so here is what I'll need:
+  1. Telegram: I'll walk you through BotFather, getting the chat ID, and making
+     the supergroup with Topics. You'll need the app open.
+  2. Feeds: I'll propose about 15 funding feeds and 30 ATS board tokens with
+     verified URLs for your approval. I'll also check each site's terms and
+     robots.txt first.
+  3. Gold set: I'll propose 50–100 recent known funding rounds and jobs, or you
+     can supply them.
+
+  Phase 2 builds the first real alerts: feeds, press wires, Hacker News, SEC
+  Form D, Greenhouse/Lever/Ashby, keyword filtering, and Telegram delivery.
+
+  Ready for Phase 2? Waiting for your go (and tell me once the push works).
