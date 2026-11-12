@@ -1,0 +1,12 @@
+# Rule-based pre-filter. Weights are tunable by feedback later (Phase 11).
+funding:
+  verbs: {weight: 3, terms: [raises, raised, secures, bags, closes, lands, "picks up", "mops up", "funding round", fundraise, oversubscribed, "out of stealth", "emerges from stealth"]}
+  stages: {weight: 3, terms: [pre-seed, "seed round", seed extension, pre-series a, series a, series b, series c, bridge round, "strategic round", "undisclosed funding"]}
+  investors: {weight: 1, terms: ["led by", "co-led by", "participation from", "backed by", "existing investors"]}
+  amount_regex: ['\$\s?\d+(\.\d+)?\s?(M|mn|million|B|bn|billion)\b', '(₹|Rs\.?|INR)\s?\d+(\.\d+)?\s?(Cr|crore|lakh)', '\d+(\.\d+)?\s?(mn|million)\s?(USD|dollars)']
+  not_funding: ["in talks to raise", "plans to raise", "looking to raise", "set to raise", "eyes funding"]
+hiring:
+  direct: {weight: 3, terms: ["we're hiring", "we are hiring", "now hiring", "open roles", "open positions", "join our team", "founding engineer", "first hire"]}
+spam:
+  terms: ["registration fee", "security deposit", "pay to apply", "earn from home", "mlm", "giveaway", "webinar", "bootcamp"]
+  slowdown: ["layoffs", "laid off", "hiring freeze", "shutting down"]

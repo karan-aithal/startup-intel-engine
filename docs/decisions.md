@@ -27,3 +27,14 @@
 
 ## Still open
 Alert Gmail address (dedicated or personal), Telegram bot token (Phase 2), final Telegram topic list, Telethon choice.
+
+## Phase 2 decisions (2026-11-11)
+| # | Topic | Decision |
+|---|---|---|
+| 22 | n8n | Optional extra, Phase 8 or later. Fed by an outbound webhook from the engine. The engine must work without it. |
+| 23 | Telegram bot and supergroup | User creates later (BotFather walkthrough deferred). Token goes in `.env` by the user. Until then alerts go to a console/log sink. |
+| 24 | Phase 2 topics | India Funding, Global Funding, India Hiring, Global Hiring, Unverified and Risk, System Health. |
+| 25 | Funding feeds, ATS tokens | Lists in `docs/phase2-proposals.md` accepted as recommended (15 feeds, 30 tokens). |
+| 26 | SEC User-Agent contact | Email supplied by user later. SEC connector stays disabled until then. |
+| 27 | Gold set | Assistant pulls and pre-labels 50-100 real items; user corrects. |
+| 28 | Dependencies | feedparser, httpx, python-telegram-bot. |

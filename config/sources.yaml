@@ -1,0 +1,17 @@
+# Approved sources (docs/phase2-proposals.md). New routes start DISABLED; enable with scripts/seed_sources.py --enable.
+feeds:
+  - {name: Entrackr, url: "https://entrackr.com/rss", region: india, poll: 600}
+  - {name: Inc42, url: "https://inc42.com/feed/", region: india, poll: 600}
+  - {name: YourStory, url: "https://yourstory.com/feed", region: india, poll: 600}
+  - {name: Mint Companies, url: "https://www.livemint.com/rss/companies", region: india, poll: 900}
+  - {name: The Arc, url: "https://thearcweb.com/feed", region: india, poll: 1800}
+  - {name: ET Startups, url: "https://economictimes.indiatimes.com/small-biz/startups/rssfeeds/11993039.cms", region: india, poll: 900}
+  - {name: TechCrunch Startups, url: "https://techcrunch.com/category/startups/feed/", region: global, poll: 600}
+  - {name: Crunchbase News, url: "https://news.crunchbase.com/feed/", region: global, poll: 600}
+  - {name: EU-Startups, url: "https://www.eu-startups.com/feed/", region: global, poll: 900}
+  - {name: Sifted, url: "https://sifted.eu/feed", region: global, poll: 900}
+  - {name: TechCabal, url: "https://techcabal.com/feed/", region: global, poll: 900}
+  - {name: Rest of World, url: "https://restofworld.org/feed/", region: global, poll: 1800}
+  - {name: PR Newswire VC, url: "https://www.prnewswire.com/rss/financial-services-latest-news/venture-capital-list.rss", region: global, poll: 600}
+  - {name: Hacker News RSS, url: "https://news.ycombinator.com/rss", region: global, poll: 300}
+  - {name: TechCrunch All, url: "https://techcrunch.com/feed/", region: global, poll: 900}
