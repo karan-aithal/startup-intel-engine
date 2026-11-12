@@ -15,3 +15,18 @@ feeds:
   - {name: PR Newswire VC, url: "https://www.prnewswire.com/rss/financial-services-latest-news/venture-capital-list.rss", region: global, poll: 600}
   - {name: Hacker News RSS, url: "https://news.ycombinator.com/rss", region: global, poll: 300}
   - {name: TechCrunch All, url: "https://techcrunch.com/feed/", region: global, poll: 900}
+
+# Phase 2 API sources. SEC stays disabled until SEC_CONTACT_EMAIL is set.
+hn:
+  name: Hacker News Algolia
+  queries: [raises, "seed round", "series a", "series b", funding, "who is hiring"]
+  poll: 120
+sec_form_d:
+  name: SEC EDGAR Form D
+  poll: 600
+# ATS board tokens, all verified to return a job list (docs/phase2-proposals.md)
+ats:
+  greenhouse: [stripe, airbnb, coinbase, figma, discord, databricks, cloudflare, datadog, gitlab, anthropic, scaleai, brex, ramp, mercury, groww, razorpaysoftwareprivatelimited]
+  lever: [palantir, spotify, paytm, cred, zeta]
+  ashby: [ashby, notion, linear, openai, deel, vercel, supabase, replit, sarvam]
+ats_poll: 1800

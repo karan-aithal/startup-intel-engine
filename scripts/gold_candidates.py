@@ -5,10 +5,12 @@ from pathlib import Path
 
 import yaml
 
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "backend"))  # so `app` imports without PYTHONPATH
+
 from app.connectors.feed import FeedAdapter
 from app.services.prefilter import classify
 
-ROOT = Path(__file__).resolve().parents[1]
 
 
 async def main(n: int) -> None:

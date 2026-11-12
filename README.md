@@ -54,6 +54,9 @@ cd backend && uv run alembic upgrade head
 
 ```bash
 ./scripts/run.sh              # backend on :8000, frontend on :3000, Ctrl+C stops both
+cd backend && uv run python ../scripts/seed_sources.py --enable   # register approved sources (SEC stays off until SEC_CONTACT_EMAIL is set)
+cd backend && uv run python -m app.worker   # collect, classify, deliver alerts (console until TELEGRAM_* is set)
+cd backend && uv run python ../scripts/gold_report.py   # precision/recall once docs/gold_set_candidates.csv is labelled
 ./scripts/health_check.sh
 ```
 
@@ -62,7 +65,7 @@ cd backend && uv run alembic upgrade head
 ```bash
 cd backend
 unset PYTHONPATH              # ROS on this machine leaks system packages into the venv
-uv run pytest                 # runs in a throwaway schema, your real database is untouched
+uv run python -m pytest       # runs in a throwaway schema, your real database is untouched
 ```
 
 ## Backups

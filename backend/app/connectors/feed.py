@@ -17,9 +17,10 @@ class FeedAdapter(SourceAdapter):
     def __init__(self, name: str, url: str, region: str = "global", client: httpx.AsyncClient | None = None):
         self.name, self.url, self.region = name, url, region
         self._client = client
+        self.user_agent = USER_AGENT
 
     async def fetch(self, cursor: dict | None = None) -> FetchResult:
-        headers = {"User-Agent": USER_AGENT, "Accept": "application/rss+xml, application/atom+xml, */*"}
+        headers = {"User-Agent": self.user_agent, "Accept": "application/rss+xml, application/atom+xml, */*"}
         if cursor:
             if cursor.get("etag"):
                 headers["If-None-Match"] = cursor["etag"]

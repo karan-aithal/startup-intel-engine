@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     cors_origins: str = "http://127.0.0.1:3000,http://localhost:3000"
     database_url: str  # postgresql+asyncpg://user:pass@127.0.0.1:5432/startup_intel
     display_timezone: str = "Asia/Kolkata"
+    telegram_bot_token: str = ""  # empty = alerts print to the console instead
+    telegram_chat_id: str = ""
+    telegram_topic_ids: str = "{}"  # JSON {"India Funding": 12, ...} message_thread_id per topic name
+    sec_contact_email: str = ""  # required by SEC EDGAR in the User-Agent
 
     @field_validator("database_url")
     @classmethod
