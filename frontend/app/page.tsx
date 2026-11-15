@@ -44,6 +44,7 @@ export default function Home() {
       )}
       <p style={{ marginTop: "1.5rem" }}>
         <Link href="/checklist">Alert checklist →</Link>
+        <br /><Link href="/watchlists">Watchlists →</Link>
       </p>
     </main>
   );

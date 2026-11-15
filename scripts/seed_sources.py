@@ -35,6 +35,15 @@ def routes(cfg: dict):
     yield m["name"], "email_alert_parser", dict(category="inbox", access_method="IMAP (app password)",
         docs_url="https://pypi.org/project/imap-tools/", poll_interval_seconds=m["poll"], retention_days=30,
         config={"kind": "imap"})
+    for t in cfg.get("telegram_channels", []):
+        yield f"telegram:{t['channel']}", "public_preview_poller", dict(category="community", access_method="t.me/s preview",
+            docs_url="https://core.telegram.org/api/web-preview", poll_interval_seconds=t["poll"], config={"kind": "telegram", "channel": t["channel"]})
+    b = cfg["bluesky"]
+    yield b["name"], "stream", dict(category="community", access_method="Jetstream WebSocket", docs_url="https://github.com/bluesky-social/jetstream",
+        config={"kind": "bluesky", "accounts": b["accounts"]})
+    for m in cfg.get("page_monitors", []):
+        yield m["name"], "page_monitor", dict(category="hiring", access_method="sitemap + schema.org JobPosting", docs_url="robots.txt checked",
+            poll_interval_seconds=m["poll"], config={"kind": "page_monitor", "careers_url": m["careers_url"], "company": m.get("company")})
     for provider, tokens in cfg["ats"].items():
         for t in tokens:
             yield f"{provider}:{t}", "api", dict(category="hiring", access_method=f"{provider} job board API",

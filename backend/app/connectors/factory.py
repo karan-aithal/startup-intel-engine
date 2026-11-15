@@ -16,6 +16,14 @@ def build_adapter(name: str, config: dict, *, sec_email: str = "", imap: dict | 
         from app.connectors.imap import ImapAdapter
 
         return ImapAdapter(name, **(imap or {}))
+    if kind == "telegram":
+        from app.connectors.telegram_preview import TelegramPreviewAdapter
+
+        return TelegramPreviewAdapter(config["channel"])
+    if kind == "page_monitor":
+        from app.connectors.page_monitor import PageMonitorAdapter
+
+        return PageMonitorAdapter(name, config["careers_url"], config.get("company"))
     if kind == "ats":
         return AtsAdapter(config["provider"], config["token"])
     raise ValueError(f"unknown connector kind {kind!r} for {name}")

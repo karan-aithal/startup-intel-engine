@@ -35,3 +35,10 @@ ats_poll: 1800
 imap:
   name: Alerts Inbox
   poll: 180
+
+# Phase 4: public-page pollers. Watchlists start empty/generic until you name accounts (docs/decisions.md #29).
+telegram_channels: []   # also editable in the UI (/watchlists). e.g. [{channel: some_public_channel, poll: 600}]
+bluesky:                # Jetstream; posts from `accounts` (handles or DIDs) and accounts discovery adds
+  name: Bluesky Jetstream
+  accounts: []
+page_monitors: []       # e.g. [{name: Acme careers, careers_url: "https://acme.com/careers", company: Acme, poll: 21600}]

@@ -12,6 +12,7 @@ portals:
   - {name: Internshala, alerts: "Internship/job alerts (only if you want entry-level)", also: ""}
   - {name: Indeed, alerts: "Job alerts per role x city", also: ""}
   - {name: Protocol Jobs, alerts: "protocoljobs.ai: check whether it offers email alerts or an RSS feed; I have not verified either", also: ""}
+  - {name: a16z Portfolio Jobs, alerts: "jobs.a16z.com: jobs across a16z portfolio companies; check for email alerts or an RSS feed (not verified)", also: ""}
   - {name: FlexJobs, alerts: "flexjobs.com: remote/flexible jobs. Likely a paid subscription (not verified): per the zero-cost rule, skip unless you approve the cost", also: ""}
 newsletters:  # availability and pricing not verified; skip any that are paid
   - {name: Entrackr, kind: "India funding, daily/weekly"}

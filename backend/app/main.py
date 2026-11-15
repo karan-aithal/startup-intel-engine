@@ -4,7 +4,7 @@ import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import dashboard, health
+from app.api import dashboard, health, watchlist
 from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.db.session import get_engine
@@ -21,7 +21,8 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Startup Intelligence Platform", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
-    CORSMiddleware, allow_origins=get_settings().cors_list, allow_methods=["GET"], allow_headers=["*"]
+    CORSMiddleware, allow_origins=get_settings().cors_list, allow_methods=["GET", "POST", "DELETE"], allow_headers=["*"]
 )
 app.include_router(health.router)
 app.include_router(dashboard.router)
+app.include_router(watchlist.router)

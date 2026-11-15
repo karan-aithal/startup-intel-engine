@@ -27,7 +27,7 @@ The work goes one phase at a time. Each phase ends with a report and waits for a
 ## Stack
 
 - Backend: Python 3.12 (via `uv`), FastAPI, SQLAlchemy 2 (async), Alembic
-- Database: PostgreSQL 18 on 127.0.0.1:5432 with `pg_trgm` and pgvector
+- Database: PostgreSQL (14 on this box; any version with pgvector) on 127.0.0.1:5432 with `pg_trgm` and pgvector
 - Frontend: Next.js, TypeScript, SCSS
 - Ports: API 8000, dashboard 3000, both bound to localhost only
 

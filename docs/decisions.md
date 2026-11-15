@@ -3,7 +3,7 @@
 | # | Topic | Decision |
 |---|---|---|
 | 1 | Repo location | `~/startup-intel-engine` (ext4). The NTFS folder holds only the prompt. |
-| 2 | Database | Existing PostgreSQL 18 on 127.0.0.1:5432. Dedicated db + role `startup_intel`. pgvector via `postgresql-18-pgvector`. |
+| 2 | Database | Existing local PostgreSQL (14 on dev box) on 127.0.0.1:5432. Dedicated db + role `startup_intel`. pgvector via `postgresql-<ver>-pgvector` (PGDG repo added by db_setup.sh; Ubuntu jammy lacks it). |
 | 3 | Docker | Install now (`scripts/install_docker.sh`, user runs with sudo). Used for Prometheus/Grafana later. |
 | 4 | Python | 3.12 via `uv` in `~/.local/bin`. |
 | 5 | Uptime | Up to ~12 h/day, not 24/7. Collectors need catch-up after downtime (cursors, backfill). |
@@ -38,3 +38,10 @@ Alert Gmail address (dedicated or personal), Telegram bot token (Phase 2), final
 | 26 | SEC User-Agent contact | Email supplied by user later. SEC connector stays disabled until then. |
 | 27 | Gold set | Assistant pulls and pre-labels 50-100 real items; user corrects. |
 | 28 | Dependencies | feedparser, httpx, python-telegram-bot. |
+
+## Phase 4 decisions (2026-11-15)
+| # | Topic | Decision |
+|---|---|---|
+| 29 | Watchlists | Telegram channels and Bluesky accounts are edited in the UI (`/watchlists`), stored in the DB. Removing disables, history kept. |
+| 30 | Mastodon | Excluded. |
+| 31 | X.com | Not built: no free compliant route (scraping breaks X terms; the API is paid and needs `paid_approved`). Open. |

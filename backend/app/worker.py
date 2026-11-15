@@ -9,12 +9,15 @@ import socket
 import structlog
 from sqlalchemy import text
 
+from app.api.watchlist import ensure_bluesky
+from app.connectors.bluesky import stream_forever
 from app.connectors.factory import build_adapter
 from app.connectors.runner import run_once
 from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.db.session import get_engine, get_sessionmaker
 from app.services import queue
+from app.services.discovery import discover_pending
 from app.services.notify import deliver_pending, make_sink
 from app.services.pipeline import process_event
 
@@ -23,7 +26,7 @@ WORKER = f"{socket.gethostname()}-{os.getpid()}"
 
 DUE_SQL = text("""
     SELECT r.name, r.config FROM source_registry r
-    WHERE r.enabled AND coalesce((SELECT max(started_at) FROM source_runs WHERE source_id = r.id), 'epoch')
+    WHERE r.enabled AND r.connector_type <> 'stream' AND coalesce((SELECT max(started_at) FROM source_runs WHERE source_id = r.id), 'epoch')
           + make_interval(secs => coalesce(r.poll_interval_seconds, 900)) <= now()""")
 
 
@@ -92,12 +95,23 @@ async def main() -> None:
         await get_engine().dispose()
 
 
+async def _streams(sm) -> list[tuple[str, dict]]:
+    """Stream routes (enabled or not): each idles until enabled and has watched accounts."""
+    async with sm() as s:
+        await ensure_bluesky(s)
+        await s.commit()
+        rows = (await s.execute(text("SELECT name, config FROM source_registry WHERE connector_type = 'stream'"))).all()
+    return [(r.name, r.config) for r in rows]
+
+
 async def _run(sm, sink, cfg, beat):
     await asyncio.gather(
         _loop("scheduler", lambda: poll_due(sm, cfg.sec_contact_email, imap_cfg(cfg)), 30),
         _loop("jobs", lambda: process_jobs(sm), 2),
         _loop("alerts", lambda: deliver_pending(sm, sink, cfg.display_timezone), 5),
         _loop("heartbeat", beat, 30),
+        _loop("discovery", lambda: discover_pending(sm), 600),
+        *(stream_forever(sm, n, c) for n, c in await _streams(sm)),
     )
 
 
