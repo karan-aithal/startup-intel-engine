@@ -19,7 +19,8 @@ async def schema():
         await c.exec_driver_sql(f"CREATE SCHEMA {name}")
     eng = create_async_engine(URL, connect_args={"server_settings": {"search_path": f"{name},public"}})
     async with eng.begin() as c:
-        await c.run_sync(Base.metadata.create_all)
+        # checkfirst=False: otherwise tables already in `public` (real DB) look present and the tests would run on them
+        await c.run_sync(lambda sc: Base.metadata.create_all(sc, checkfirst=False))
     await eng.dispose()
     yield name
     async with admin.begin() as c:
