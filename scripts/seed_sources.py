@@ -35,6 +35,9 @@ def routes(cfg: dict):
     yield m["name"], "email_alert_parser", dict(category="inbox", access_method="IMAP (app password)",
         docs_url="https://pypi.org/project/imap-tools/", poll_interval_seconds=m["poll"], retention_days=30,
         config={"kind": "imap"})
+    yield "Telegram Share", "share_to_bot", dict(category="inbox", access_method="Bot API getUpdates (you forward links)",
+        docs_url="https://core.telegram.org/bots/api#getupdates", poll_interval_seconds=30, retention_days=30,
+        config={"kind": "share_bot"})
     for t in cfg.get("telegram_channels", []):
         yield f"telegram:{t['channel']}", "public_preview_poller", dict(category="community", access_method="t.me/s preview",
             docs_url="https://core.telegram.org/api/web-preview", poll_interval_seconds=t["poll"], config={"kind": "telegram", "channel": t["channel"]})
@@ -55,13 +58,14 @@ async def main(enable: bool) -> None:
     cfg = yaml.safe_load((ROOT / "config/sources.yaml").read_text())
     st = get_settings()
     has_email, has_imap = bool(st.sec_contact_email), bool(st.imap_user and st.imap_password)
+    has_bot = bool(st.telegram_bot_token and st.telegram_owner_id)
     sm, n, on = get_sessionmaker(), 0, 0
     async with sm() as s:
         for name, ctype, fields in routes(cfg):
             await register_source(s, name, ctype, **fields)
             n += 1
             kind = fields["config"]["kind"]
-            if enable and (has_email or kind != "sec_form_d") and (has_imap or kind != "imap"):
+            if enable and (has_email or kind != "sec_form_d") and (has_imap or kind != "imap") and (has_bot or kind != "share_bot"):
                 await set_enabled(s, name, ctype, True)
                 on += 1
         await s.commit()

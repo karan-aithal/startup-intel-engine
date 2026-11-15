@@ -30,7 +30,7 @@ DUE_SQL = text("""
           + make_interval(secs => coalesce(r.poll_interval_seconds, 900)) <= now()""")
 
 
-async def poll_due(sm, sec_email: str, imap: dict | None = None, concurrency: int = 5) -> list[dict]:
+async def poll_due(sm, sec_email: str, imap: dict | None = None, bot: dict | None = None, concurrency: int = 5) -> list[dict]:
     """One scheduler pass. Each source runs isolated; run_once records its own failure."""
     async with sm() as s:
         due = (await s.execute(DUE_SQL)).all()
@@ -39,7 +39,7 @@ async def poll_due(sm, sec_email: str, imap: dict | None = None, concurrency: in
     async def one(name, config):
         async with sem:
             try:
-                return await run_once(sm, build_adapter(name, config, sec_email=sec_email, imap=imap))
+                return await run_once(sm, build_adapter(name, config, sec_email=sec_email, imap=imap, bot=bot))
             except Exception as exc:  # noqa: BLE001 - bad config for one source must not stop the rest
                 log.warning("source_build_failed", source=name, error=str(exc))
                 return {"status": "error", "error": str(exc)}
@@ -49,6 +49,10 @@ async def poll_due(sm, sec_email: str, imap: dict | None = None, concurrency: in
 
 def imap_cfg(cfg) -> dict:
     return {"host": cfg.imap_host, "user": cfg.imap_user, "password": cfg.imap_password, "folder": cfg.imap_folder}
+
+
+def bot_cfg(cfg) -> dict:
+    return {"token": cfg.telegram_bot_token, "allowed_ids": {i for i in (cfg.telegram_owner_id,) if i}}
 
 
 async def process_jobs(sm, limit: int = 100) -> int:
@@ -106,7 +110,7 @@ async def _streams(sm) -> list[tuple[str, dict]]:
 
 async def _run(sm, sink, cfg, beat):
     await asyncio.gather(
-        _loop("scheduler", lambda: poll_due(sm, cfg.sec_contact_email, imap_cfg(cfg)), 30),
+        _loop("scheduler", lambda: poll_due(sm, cfg.sec_contact_email, imap_cfg(cfg), bot_cfg(cfg)), 30),
         _loop("jobs", lambda: process_jobs(sm), 2),
         _loop("alerts", lambda: deliver_pending(sm, sink, cfg.display_timezone), 5),
         _loop("heartbeat", beat, 30),

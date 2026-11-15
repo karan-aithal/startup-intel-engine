@@ -44,4 +44,4 @@ Alert Gmail address (dedicated or personal), Telegram bot token (Phase 2), final
 |---|---|---|
 | 29 | Watchlists | Telegram channels and Bluesky accounts are edited in the UI (`/watchlists`), stored in the DB. Removing disables, history kept. |
 | 30 | Mastodon | Excluded. |
-| 31 | X.com | Not built: no free compliant route (scraping breaks X terms; the API is paid and needs `paid_approved`). Open. |
+| 31 | X.com | No scraping or paid API. Forward X links to the Telegram bot (`share_to_bot` route, `TELEGRAM_OWNER_ID` allow-list). |

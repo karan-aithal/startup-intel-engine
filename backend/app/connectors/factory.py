@@ -4,7 +4,7 @@ from app.connectors.base import SourceAdapter
 from app.connectors.feed import FeedAdapter
 
 
-def build_adapter(name: str, config: dict, *, sec_email: str = "", imap: dict | None = None) -> SourceAdapter:
+def build_adapter(name: str, config: dict, *, sec_email: str = "", imap: dict | None = None, bot: dict | None = None) -> SourceAdapter:
     kind = config.get("kind")
     if kind == "feed":
         return FeedAdapter(name, config["url"], config.get("region", "global"))
@@ -16,6 +16,10 @@ def build_adapter(name: str, config: dict, *, sec_email: str = "", imap: dict | 
         from app.connectors.imap import ImapAdapter
 
         return ImapAdapter(name, **(imap or {}))
+    if kind == "share_bot":
+        from app.connectors.share_bot import ShareBotAdapter
+
+        return ShareBotAdapter(name, **(bot or {"token": "", "allowed_ids": set()}))
     if kind == "telegram":
         from app.connectors.telegram_preview import TelegramPreviewAdapter
 

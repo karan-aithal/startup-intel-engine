@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     display_timezone: str = "Asia/Kolkata"
     telegram_bot_token: str = ""  # empty = alerts print to the console instead
     telegram_chat_id: str = ""
+    telegram_owner_id: int = 0  # your Telegram user id; only you can feed the share-to-bot route
     telegram_topic_ids: str = "{}"  # JSON {"India Funding": 12, ...} message_thread_id per topic name
     imap_host: str = "imap.gmail.com"
     imap_user: str = ""  # dedicated alerts inbox; empty = the email route stays off

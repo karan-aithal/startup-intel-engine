@@ -135,3 +135,31 @@ async def test_watchlist_api(sm, monkeypatch):
     assert await w.list_all() == {"telegram": [], "bluesky": []}
     with pytest.raises(Exception):
         await w.add("telegram", w.Item(value="x y"))
+
+
+def upd(uid, text, sender=7, mid=1):
+    return {"update_id": uid, "message": {"message_id": mid, "chat": {"id": sender}, "from": {"id": sender}, "date": 1763200000, "text": text}}
+
+
+async def test_share_bot_x_links_dedup_and_allowlist(sm):
+    from app.connectors.runner import run_once
+    from app.connectors.share_bot import ShareBotAdapter, canonical
+    assert canonical("https://twitter.com/a/status/1?s=20&t=x") == canonical("https://www.x.com/a/status/1/") == "https://x.com/a/status/1"
+    sent = [upd(10, "Acme raised $5M seed https://twitter.com/a/status/1?s=20"), upd(11, "again https://x.com/a/status/1", mid=2),
+            upd(12, "spam https://evil.io", sender=99)]
+    calls = []
+
+    def h(req: httpx.Request):
+        calls.append(req.url.params["offset"])
+        return httpx.Response(200, json={"result": [u for u in sent if u["update_id"] >= int(req.url.params["offset"])]})
+
+    a = ShareBotAdapter("Telegram Share", "tok", {7}, httpx.AsyncClient(transport=httpx.MockTransport(h)))
+    async with sm() as s:
+        await registry.register_source(s, "Telegram Share", "share_to_bot")
+        await registry.set_enabled(s, "Telegram Share", "share_to_bot", True)
+        await s.commit()
+    assert (await run_once(sm, a))["new"] == 1  # same X post twice = one event; stranger ignored
+    await run_once(sm, a)
+    assert calls == ["0", "13"]
+    async with sm() as s:
+        assert (await s.execute(text("SELECT canonical_url FROM source_events"))).scalar_one() == "https://x.com/a/status/1"
