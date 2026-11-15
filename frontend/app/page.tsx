@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import styles from "./page.module.scss";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
@@ -41,6 +42,9 @@ export default function Home() {
           </span>
         </div>
       )}
+      <p style={{ marginTop: "1.5rem" }}>
+        <Link href="/checklist">Alert checklist →</Link>
+      </p>
     </main>
   );
 }

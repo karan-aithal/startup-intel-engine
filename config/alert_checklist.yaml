@@ -1,0 +1,85 @@
+# Alerts to set up by hand. Shown in the dashboard at /checklist. Nothing here was verified against the
+# portals' current menus: menu names change, so treat "where" as a hint. All alerts go to the dedicated inbox.
+# After setting one up, forward ONE real email to the inbox and tell Claude, so its parser can be written.
+portals:
+  - {name: LinkedIn, alerts: "Job alerts: one per role x city, 'daily' or 'instant' (your call)", also: "Follow notifications for key founders, investors, recruiters (only the ones that email you)"}
+  - {name: Naukri, alerts: "Job alerts per role x city, plus saved-search alerts", also: ""}
+  - {name: foundit, alerts: "Job alerts per role x city", also: ""}
+  - {name: Instahyre, alerts: "Job preferences / alert emails (startup-focused)", also: ""}
+  - {name: Wellfound, alerts: "Job alerts by role and location; startup-only listings", also: ""}
+  - {name: Hirist, alerts: "Tech job alerts per role x city", also: ""}
+  - {name: Cutshort, alerts: "Job match emails (cutshort.io)", also: ""}
+  - {name: Internshala, alerts: "Internship/job alerts (only if you want entry-level)", also: ""}
+  - {name: Indeed, alerts: "Job alerts per role x city", also: ""}
+  - {name: Protocol Jobs, alerts: "protocoljobs.ai: check whether it offers email alerts or an RSS feed; I have not verified either", also: ""}
+  - {name: FlexJobs, alerts: "flexjobs.com: remote/flexible jobs. Likely a paid subscription (not verified): per the zero-cost rule, skip unless you approve the cost", also: ""}
+newsletters:  # availability and pricing not verified; skip any that are paid
+  - {name: Entrackr, kind: "India funding, daily/weekly"}
+  - {name: "Inc42 (Daily Brief, Funding Galore weekly)"}
+  - {name: YourStory (daily)}
+  - {name: Morning Context, kind: "India business and tech"}
+  - {name: The Arc, kind: "India startup deep dives"}
+  - {name: TechCrunch (daily newsletter)}
+  - {name: Crunchbase News (daily)}
+  - {name: StrictlyVC, kind: "global VC deals"}
+  - {name: Axios Pro Rata, kind: "deals"}
+  - {name: Fortune Term Sheet, kind: "deals"}
+  - {name: Sifted, kind: "Europe"}
+  - {name: EU-Startups, kind: "Europe"}
+  - {name: TechCabal Daily, kind: "Africa"}
+  - {name: Tech in Asia, kind: "SE Asia"}
+google_alerts:  # google.com/alerts. Prefer 'Deliver to: RSS feed' (feed connector) or the inbox. Quote exact phrases.
+  funding_phrases:
+    - '"raises" "seed round" startup India'
+    - '"raises" "pre-seed" startup'
+    - '"pre-Series A" India'
+    - '"Series A" startup India raises'
+    - '"Series B" startup raises'
+    - '"Series C" startup raises'
+    - '"led by" "funding round" startup India'
+    - '"secures funding" startup India'
+    - '"raises Rs" crore startup'
+    - '"raises" "$" "million" startup Bengaluru'
+    - '"angel round" startup India'
+    - '"bridge round" startup'
+    - '"seed extension" startup'
+    - '"out of stealth" startup'
+    - '"oversubscribed" round startup'
+    - '"venture debt" startup India'
+    - '"first close" fund India VC'
+  hiring_phrases:
+    - '"founding engineer" startup India'
+    - '"we are hiring" startup Bengaluru'
+    - '"first hire" startup'
+  investors:  # one alert each: "<name>" invests OR leads OR backs
+    - Peak XV
+    - Accel India
+    - Elevation Capital
+    - Blume Ventures
+    - Lightspeed India
+    - Nexus Venture Partners
+    - Z47 (Matrix Partners India)
+    - Chiratae Ventures
+    - 3one4 Capital
+    - Stellaris Venture Partners
+    - India Quotient
+    - Antler India
+    - Y Combinator
+    - Sequoia Capital
+    - Andreessen Horowitz
+    - General Catalyst
+  companies:  # your watchlist; edit freely. Phase 5 will grow this automatically.
+    - Sarvam AI
+    - Krutrim
+    - Zepto
+    - Razorpay
+    - Groww
+    - CRED
+    - Meesho
+    - Rapido
+    - Lenskart
+    - Ola Electric
+    - Anthropic
+    - OpenAI
+    - Mistral AI
+    - Perplexity

@@ -27,7 +27,7 @@ DUE_SQL = text("""
           + make_interval(secs => coalesce(r.poll_interval_seconds, 900)) <= now()""")
 
 
-async def poll_due(sm, sec_email: str, concurrency: int = 5) -> list[dict]:
+async def poll_due(sm, sec_email: str, imap: dict | None = None, concurrency: int = 5) -> list[dict]:
     """One scheduler pass. Each source runs isolated; run_once records its own failure."""
     async with sm() as s:
         due = (await s.execute(DUE_SQL)).all()
@@ -36,12 +36,16 @@ async def poll_due(sm, sec_email: str, concurrency: int = 5) -> list[dict]:
     async def one(name, config):
         async with sem:
             try:
-                return await run_once(sm, build_adapter(name, config, sec_email=sec_email))
+                return await run_once(sm, build_adapter(name, config, sec_email=sec_email, imap=imap))
             except Exception as exc:  # noqa: BLE001 - bad config for one source must not stop the rest
                 log.warning("source_build_failed", source=name, error=str(exc))
                 return {"status": "error", "error": str(exc)}
 
     return await asyncio.gather(*(one(n, c) for n, c in due))
+
+
+def imap_cfg(cfg) -> dict:
+    return {"host": cfg.imap_host, "user": cfg.imap_user, "password": cfg.imap_password, "folder": cfg.imap_folder}
 
 
 async def process_jobs(sm, limit: int = 100) -> int:
@@ -90,7 +94,7 @@ async def main() -> None:
 
 async def _run(sm, sink, cfg, beat):
     await asyncio.gather(
-        _loop("scheduler", lambda: poll_due(sm, cfg.sec_contact_email), 30),
+        _loop("scheduler", lambda: poll_due(sm, cfg.sec_contact_email, imap_cfg(cfg)), 30),
         _loop("jobs", lambda: process_jobs(sm), 2),
         _loop("alerts", lambda: deliver_pending(sm, sink, cfg.display_timezone), 5),
         _loop("heartbeat", beat, 30),

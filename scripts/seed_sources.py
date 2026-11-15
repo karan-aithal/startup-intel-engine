@@ -31,6 +31,10 @@ def routes(cfg: dict):
     s = cfg["sec_form_d"]
     yield s["name"], "feed", dict(category="funding", access_method="EDGAR current-filings Atom", docs_url=DOCS["sec"],
         poll_interval_seconds=s["poll"], config={"kind": "sec_form_d"})
+    m = cfg["imap"]
+    yield m["name"], "email_alert_parser", dict(category="inbox", access_method="IMAP (app password)",
+        docs_url="https://pypi.org/project/imap-tools/", poll_interval_seconds=m["poll"], retention_days=30,
+        config={"kind": "imap"})
     for provider, tokens in cfg["ats"].items():
         for t in tokens:
             yield f"{provider}:{t}", "api", dict(category="hiring", access_method=f"{provider} job board API",
@@ -40,17 +44,19 @@ def routes(cfg: dict):
 
 async def main(enable: bool) -> None:
     cfg = yaml.safe_load((ROOT / "config/sources.yaml").read_text())
-    has_email = bool(get_settings().sec_contact_email)
+    st = get_settings()
+    has_email, has_imap = bool(st.sec_contact_email), bool(st.imap_user and st.imap_password)
     sm, n, on = get_sessionmaker(), 0, 0
     async with sm() as s:
         for name, ctype, fields in routes(cfg):
             await register_source(s, name, ctype, **fields)
             n += 1
-            if enable and (has_email or fields["config"]["kind"] != "sec_form_d"):
+            kind = fields["config"]["kind"]
+            if enable and (has_email or kind != "sec_form_d") and (has_imap or kind != "imap"):
                 await set_enabled(s, name, ctype, True)
                 on += 1
         await s.commit()
-    print(f"registered {n} routes, enabled {on}" + ("" if has_email else " (SEC skipped: SEC_CONTACT_EMAIL unset)"))
+    print(f"registered {n} routes, enabled {on}" + "".join([" (SEC skipped: SEC_CONTACT_EMAIL unset)" if not has_email else "", " (IMAP skipped: IMAP_USER/IMAP_PASSWORD unset)" if not has_imap else ""]))
     await get_engine().dispose()
 
 

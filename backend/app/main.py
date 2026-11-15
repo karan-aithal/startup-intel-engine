@@ -4,7 +4,7 @@ import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import health
+from app.api import dashboard, health
 from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.db.session import get_engine
@@ -24,3 +24,4 @@ app.add_middleware(
     CORSMiddleware, allow_origins=get_settings().cors_list, allow_methods=["GET"], allow_headers=["*"]
 )
 app.include_router(health.router)
+app.include_router(dashboard.router)

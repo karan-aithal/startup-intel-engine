@@ -30,3 +30,8 @@ ats:
   lever: [palantir, spotify, paytm, cred, zeta]
   ashby: [ashby, notion, linear, openai, deel, vercel, supabase, replit, sarvam]
 ats_poll: 1800
+
+# Phase 3: dedicated alerts inbox (IMAP). Stays disabled until IMAP_USER and IMAP_PASSWORD are set.
+imap:
+  name: Alerts Inbox
+  poll: 180

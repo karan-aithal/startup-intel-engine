@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""  # empty = alerts print to the console instead
     telegram_chat_id: str = ""
     telegram_topic_ids: str = "{}"  # JSON {"India Funding": 12, ...} message_thread_id per topic name
+    imap_host: str = "imap.gmail.com"
+    imap_user: str = ""  # dedicated alerts inbox; empty = the email route stays off
+    imap_password: str = ""  # Gmail app password (needs 2-step verification), never the account password
+    imap_folder: str = "INBOX"
     sec_contact_email: str = ""  # required by SEC EDGAR in the User-Agent
 
     @field_validator("database_url")

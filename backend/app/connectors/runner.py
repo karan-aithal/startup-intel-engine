@@ -33,7 +33,10 @@ async def run_once(sm: async_sessionmaker, adapter: SourceAdapter, scope: str = 
     t0 = time.monotonic()
     try:
         result = await adapter.fetch(cursor)
-        events = [e for e in [await adapter.normalize(i) for i in result.items] if e is not None]
+        events = []
+        for i in result.items:
+            out = await adapter.normalize(i)  # one item may yield several events (an alert email lists many jobs)
+            events.extend(out if isinstance(out, list) else [out] if out else [])
         async with sm() as s:
             new, dup = await ingest_batch(s, source_id, events, result.cursor, scope)
             await registry.record_success(s, source_id)
