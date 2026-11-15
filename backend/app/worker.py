@@ -20,6 +20,7 @@ from app.core.logging import setup_logging
 from app.db.session import get_engine, get_sessionmaker
 from app.services import ats, companies, queue
 from app.services.discovery import discover_pending
+from app.services.llm import enrich_event
 from app.services.notify import deliver_pending, make_sink
 from app.services.pipeline import process_event
 
@@ -72,6 +73,26 @@ async def process_jobs(sm, limit: int = 100) -> int:
             async with sm() as s:
                 await queue.fail(s, str(j["id"]), WORKER, f"{type(exc).__name__}: {exc}")
                 await s.commit()
+    return len(jobs)
+
+
+async def llm_jobs(sm, cfg) -> int:
+    """One job at a time on its own loop, so model latency cannot delay process_jobs or alert delivery."""
+    async with sm() as s:
+        jobs = await queue.claim(s, WORKER, kinds=["llm_enrich"], limit=1, lease_s=900)
+        await s.commit()
+    async with httpx.AsyncClient() as c:
+        for j in jobs:
+            try:
+                async with sm() as s:
+                    await enrich_event(s, j["payload"]["event_id"], c, cfg.llm_base_url, cfg.llm_model, cfg.llm_embed_model,
+                                       cfg.llm_embed_base_url)
+                    await queue.complete(s, str(j["id"]), WORKER)
+                    await s.commit()
+            except Exception as exc:  # noqa: BLE001 - model server down: back off and retry
+                async with sm() as s:
+                    await queue.fail(s, str(j["id"]), WORKER, f"{type(exc).__name__}: {exc}")
+                    await s.commit()
     return len(jobs)
 
 
@@ -141,6 +162,7 @@ async def _run(sm, sink, cfg, beat):
         _loop("discovery", lambda: discover_pending(sm), 600),
         _loop("companies", lambda: companies.resolve_pending(sm), 60),
         _loop("ats", lambda: ats.detect_pending(sm, cfg.auto_watch_cap), 120),
+        *([_loop("llm", lambda: llm_jobs(sm, cfg), 3)] if cfg.llm_enabled else []),
         _loop("maintenance", lambda: maintenance(sm), 3600),
         *(stream_forever(sm, n, c) for n, c in await _streams(sm)),
     )

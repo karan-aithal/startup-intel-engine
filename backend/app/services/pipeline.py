@@ -7,9 +7,11 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.services.companies import add_candidate, extract_company
 from app.services.outbox import add_alert
 from app.services.prefilter import classify
+from app.services.queue import enqueue
 
 INDIA = re.compile(r"\b(india|bengaluru|bangalore|mumbai|delhi|gurgaon|gurugram|noida|hyderabad|pune|chennai)\b", re.I)
 JOB_MAX_AGE = timedelta(hours=48)  # older jobs are stored but not alerted, so a first poll doesn't flood Telegram
@@ -53,6 +55,8 @@ async def process_event(s: AsyncSession, event_id: str) -> str:
             topic=pick_topic(label, india))
     await s.execute(text("UPDATE source_events SET processing_status = :l WHERE id = :id"),
                     {"l": label, "id": event_id})
+    if get_settings().llm_enabled and (label in ("funding", "rumour") or ev["event_type"] == "job"):
+        await enqueue(s, "llm_enrich", {"event_id": event_id}, event_id, priority=90)  # own queue kind: never delays alerts
     return label
 
 

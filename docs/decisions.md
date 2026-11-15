@@ -52,3 +52,11 @@ Alert Gmail address (dedicated or personal), Telegram bot token (Phase 2), final
 | 32 | Auto-watch cap | 200 companies (`AUTO_WATCH_CAP`). Past it, found ATS boards are stored as `candidate` and not polled. |
 | 33 | Common Crawl ATS seeding | Yes, monthly, CDX index queries only (no WARC downloads). Boards stored as candidates. Route "Common Crawl ATS" is enabled by `seed_sources.py --enable`. |
 | 34 | Hot companies | Funded companies polled every 10 min for 90 days, then 30 min. |
+
+## Phase 6 decisions (2026-11-15)
+| # | Topic | Decision |
+|---|---|---|
+| 35 | Model runtime | llama.cpp `llama-server` (binary from LM Studio's backend, `scripts/llm_servers.sh`), OpenAI-compatible API (`LLM_BASE_URL`, `LLM_EMBED_BASE_URL`). LM Studio's own server is not used: it cannot turn Qwen3.5 thinking off. Ollama is not used. Models live in `/media/xlr8/6A025A89025A59E1/Users/karan/.lmstudio/models`. |
+| 36 | Local model | `Qwen3.5-4B` Q4_K_M (lmstudio-community GGUF), CPU-only. Set `LLM_ENABLED=true` once the server is up. |
+| 37 | Embeddings | `nomic-embed-text-v1.5` GGUF (768 dims), pgvector HNSW. Funding news with cosine similarity >= 0.92 within 14 days is marked `duplicate_of`. |
+| 38 | Isolation | LLM work is its own queue kind (`llm_enrich`), one job at a time on its own worker loop. Alerts never wait for it. |

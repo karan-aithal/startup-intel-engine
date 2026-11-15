@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     imap_user: str = ""  # dedicated alerts inbox; empty = the email route stays off
     imap_password: str = ""  # Gmail app password (needs 2-step verification), never the account password
     imap_folder: str = "INBOX"
+    llm_enabled: bool = False  # turn on after the model server (LM Studio or llama-server) is running
+    llm_base_url: str = "http://127.0.0.1:8080/v1"  # llama-server (LM Studio server is :1234 but cannot turn thinking off)
+    llm_embed_base_url: str = ""  # embeddings server if separate (llama-server runs one model per port); empty = llm_base_url
+    llm_model: str = "qwen3.5-4b"
+    llm_embed_model: str = "nomic-embed"
     auto_watch_cap: int = 200  # max companies the discovery loop may add to polling on its own
     sec_contact_email: str = ""  # required by SEC EDGAR in the User-Agent
 
