@@ -5,7 +5,9 @@ Run: cd backend && uv run python -m app.worker
 import asyncio
 import os
 import socket
+from datetime import UTC, datetime, timedelta
 
+import httpx
 import structlog
 from sqlalchemy import text
 
@@ -16,7 +18,7 @@ from app.connectors.runner import run_once
 from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.db.session import get_engine, get_sessionmaker
-from app.services import queue
+from app.services import ats, companies, queue
 from app.services.discovery import discover_pending
 from app.services.notify import deliver_pending, make_sink
 from app.services.pipeline import process_event
@@ -26,7 +28,7 @@ WORKER = f"{socket.gethostname()}-{os.getpid()}"
 
 DUE_SQL = text("""
     SELECT r.name, r.config FROM source_registry r
-    WHERE r.enabled AND r.connector_type <> 'stream' AND coalesce((SELECT max(started_at) FROM source_runs WHERE source_id = r.id), 'epoch')
+    WHERE r.enabled AND r.connector_type NOT IN ('stream', 'discovery') AND coalesce((SELECT max(started_at) FROM source_runs WHERE source_id = r.id), 'epoch')
           + make_interval(secs => coalesce(r.poll_interval_seconds, 900)) <= now()""")
 
 
@@ -73,6 +75,28 @@ async def process_jobs(sm, limit: int = 100) -> int:
     return len(jobs)
 
 
+async def maintenance(sm) -> None:
+    """Hot-company polling rates, and the monthly Common Crawl seeding run (when that route is enabled)."""
+    async with sm() as s:
+        await ats.refresh_hot_polling(s)
+        row = (await s.execute(text("""SELECT r.id, r.enabled, (SELECT max(started_at) FROM source_runs WHERE source_id = r.id) AS last
+            FROM source_registry r WHERE r.name = 'Common Crawl ATS' AND r.connector_type = 'discovery'"""))).first()
+        await s.commit()
+    if row and row.enabled and (row.last is None or datetime.now(UTC) - row.last > timedelta(days=30)):
+        async with sm() as s:
+            rid = (await s.execute(text("INSERT INTO source_runs (source_id) VALUES (:i) RETURNING id"), {"i": row.id})).scalar_one()
+            await s.commit()
+        try:
+            async with sm() as s, httpx.AsyncClient(timeout=60) as c:
+                new = await ats.seed_from_common_crawl(s, c)
+                await s.execute(text("UPDATE source_runs SET status='ok', finished_at=now(), items_new=:n WHERE id=:i"), {"n": new, "i": rid})
+                await s.commit()
+        except Exception as exc:  # noqa: BLE001
+            async with sm() as s:
+                await s.execute(text("UPDATE source_runs SET status='error', finished_at=now(), error=:e WHERE id=:i"), {"e": str(exc)[:500], "i": rid})
+                await s.commit()
+
+
 async def _loop(name: str, fn, every_s: float):
     while True:
         try:
@@ -115,6 +139,9 @@ async def _run(sm, sink, cfg, beat):
         _loop("alerts", lambda: deliver_pending(sm, sink, cfg.display_timezone), 5),
         _loop("heartbeat", beat, 30),
         _loop("discovery", lambda: discover_pending(sm), 600),
+        _loop("companies", lambda: companies.resolve_pending(sm), 60),
+        _loop("ats", lambda: ats.detect_pending(sm, cfg.auto_watch_cap), 120),
+        _loop("maintenance", lambda: maintenance(sm), 3600),
         *(stream_forever(sm, n, c) for n, c in await _streams(sm)),
     )
 

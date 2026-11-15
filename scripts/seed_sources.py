@@ -41,6 +41,8 @@ def routes(cfg: dict):
     for t in cfg.get("telegram_channels", []):
         yield f"telegram:{t['channel']}", "public_preview_poller", dict(category="community", access_method="t.me/s preview",
             docs_url="https://core.telegram.org/api/web-preview", poll_interval_seconds=t["poll"], config={"kind": "telegram", "channel": t["channel"]})
+    yield "Common Crawl ATS", "discovery", dict(category="hiring", access_method="Common Crawl CDX index queries (monthly)",
+        docs_url="https://commoncrawl.org/get-started", poll_interval_seconds=None, config={"kind": "commoncrawl"})
     b = cfg["bluesky"]
     yield b["name"], "stream", dict(category="community", access_method="Jetstream WebSocket", docs_url="https://github.com/bluesky-social/jetstream",
         config={"kind": "bluesky", "accounts": b["accounts"]})

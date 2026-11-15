@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     imap_user: str = ""  # dedicated alerts inbox; empty = the email route stays off
     imap_password: str = ""  # Gmail app password (needs 2-step verification), never the account password
     imap_folder: str = "INBOX"
+    auto_watch_cap: int = 200  # max companies the discovery loop may add to polling on its own
     sec_contact_email: str = ""  # required by SEC EDGAR in the User-Agent
 
     @field_validator("database_url")

@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.companies import add_candidate, extract_company
 from app.services.outbox import add_alert
 from app.services.prefilter import classify
 
@@ -39,6 +40,9 @@ async def process_event(s: AsyncSession, event_id: str) -> str:
     if label == "hiring" and ev["event_type"] == "job":
         pub = ev["published_at"]
         alertable = pub is not None and datetime.now(UTC) - pub <= JOB_MAX_AGE
+    if label == "funding" and ev["event_type"] != "form_d":  # heavy resolution runs in its own worker loop, never here
+        if name := ev["company_name"] or extract_company(ev["title"]):
+            await add_candidate(s, name, str(ev["id"]))
     if alertable:
         india = (ev["raw_metadata"] or {}).get("region") == "india" or bool(INDIA.search(ev["location"] or ""))
         await add_alert(

@@ -45,3 +45,10 @@ Alert Gmail address (dedicated or personal), Telegram bot token (Phase 2), final
 | 29 | Watchlists | Telegram channels and Bluesky accounts are edited in the UI (`/watchlists`), stored in the DB. Removing disables, history kept. |
 | 30 | Mastodon | Excluded. |
 | 31 | X.com | No scraping or paid API. Forward X links to the Telegram bot (`share_to_bot` route, `TELEGRAM_OWNER_ID` allow-list). |
+
+## Phase 5 decisions (2026-11-15)
+| # | Topic | Decision |
+|---|---|---|
+| 32 | Auto-watch cap | 200 companies (`AUTO_WATCH_CAP`). Past it, found ATS boards are stored as `candidate` and not polled. |
+| 33 | Common Crawl ATS seeding | Yes, monthly, CDX index queries only (no WARC downloads). Boards stored as candidates. Route "Common Crawl ATS" is enabled by `seed_sources.py --enable`. |
+| 34 | Hot companies | Funded companies polled every 10 min for 90 days, then 30 min. |
