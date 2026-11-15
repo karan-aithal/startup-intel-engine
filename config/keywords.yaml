@@ -1,6 +1,6 @@
 # Rule-based pre-filter. Weights are tunable by feedback later (Phase 11).
 funding:
-  verbs: {weight: 3, terms: [raises, raised, secures, bags, closes, lands, "picks up", "mops up", "funding round", fundraise, oversubscribed, "out of stealth", "emerges from stealth"]}
+  verbs: {weight: 3, terms: [raise, raises, raised, valuation, secures, bags, closes, lands, "picks up", "mops up", "funding round", fundraise, oversubscribed, "out of stealth", "emerges from stealth"]}
   stages: {weight: 3, terms: [pre-seed, "seed round", seed extension, pre-series a, series a, series b, series c, bridge round, "strategic round", "undisclosed funding"]}
   investors: {weight: 1, terms: ["led by", "co-led by", "participation from", "backed by", "existing investors"]}
   amount_regex: ['\$\s?\d+(\.\d+)?\s?(M|mn|million|B|bn|billion)\b', '€\s?\d+(\.\d+)?\s?(M|mn|million|B|bn|billion)\b', '(₹|Rs\.?|INR)\s?\d+(\.\d+)?\s?(Cr|crore|lakh)', '\d+(\.\d+)?\s?(mn|million)\s?(USD|dollars)']

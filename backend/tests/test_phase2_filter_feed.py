@@ -59,3 +59,9 @@ def test_summary_recap_of_past_round_is_not_funding():
 def test_amount_taken_from_summary():
     c = classify("Acme closes funding round", "The company said it brought in $5 million.")
     assert c["label"] == "funding" and c["amount"] == "$5 million"
+
+
+def test_raise_verb_and_valuation_headline():
+    assert classify("Co-Founders Raise $6M For Mental Health Startup")["label"] == "funding"
+    assert classify("Fal doubles its valuation to $16B as demand surges")["label"] == "funding"
+    assert classify("Startup plans to raise $50M next year")["label"] == "rumour"  # rumour still wins
