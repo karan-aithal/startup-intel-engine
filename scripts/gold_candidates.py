@@ -1,6 +1,6 @@
 """Pull live items from approved feeds and pre-label them with the rule filter, for human correction.
 Usage: cd backend && uv run python ../scripts/gold_candidates.py [N]  -> docs/gold_set_candidates.csv"""
-import asyncio, csv, sys
+import asyncio, csv, re, sys
 from pathlib import Path
 
 import yaml
@@ -26,15 +26,15 @@ async def main(n: int) -> None:
             ev = await a.normalize(item)
             if ev:
                 c = classify(ev.title, ev.content)
-                rows.append([f["name"], f["region"], ev.title, ev.source_url, c["label"], c["amount"] or "", ""])
+                rows.append([f["name"], f["region"], ev.title, " ".join(re.sub(r"<[^>]+>", " ", ev.content or "").split())[:500], ev.source_url, c["label"], c["amount"] or "", ""])
         await asyncio.sleep(1)
     # favour a balanced sample: all non-"none" first, then fill with "none"
-    rows.sort(key=lambda r: r[4] == "none")
-    keep = [r for r in rows if r[4] != "none"][: n * 2 // 3] + [r for r in rows if r[4] == "none"][: n // 3]
+    rows.sort(key=lambda r: r[5] == "none")
+    keep = [r for r in rows if r[5] != "none"][: n * 2 // 3] + [r for r in rows if r[5] == "none"][: n // 3]
     out = ROOT / "docs/gold_set_candidates.csv"
     with out.open("w", newline="") as fh:
         w = csv.writer(fh)
-        w.writerow(["source", "region", "title", "url", "auto_label", "amount", "correct_label"])
+        w.writerow(["source", "region", "title", "summary", "url", "auto_label", "amount", "correct_label"])
         w.writerows(keep)
     print(f"{len(keep)} rows -> {out}")
 

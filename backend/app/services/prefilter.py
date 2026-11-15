@@ -1,4 +1,7 @@
-"""Rule-based keyword pre-filter. Classifies funding vs hiring vs rumour vs spam. No LLM."""
+"""Rule-based keyword pre-filter. Classifies funding vs hiring vs rumour vs spam. No LLM.
+
+Funding and rumour keywords match the title only; amounts are extracted from title and summary.
+Spam and hiring terms match title and summary. gold_report.py calls classify() directly."""
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -21,10 +24,11 @@ def classify(title: str | None, content: str | None = None) -> dict:
     """Returns {label, score, amount, matches}. label: funding|rumour|hiring|spam|none."""
     c = _cfg()
     text = f"{title or ''} {content or ''}".lower()
+    head = (title or "").lower()  # funding keywords match the title only: summaries often recap past rounds
     f = c["funding"]
-    verbs, stages, inv = (_hits(text, f[k]["terms"]) for k in ("verbs", "stages", "investors"))
+    verbs, stages, inv = (_hits(head, f[k]["terms"]) for k in ("verbs", "stages", "investors"))
     amounts = [m.group(0) for rx in f["amount_regex"] for m in re.finditer(rx, f"{title or ''} {content or ''}", re.I)]
-    rumour = _hits(text, f["not_funding"])
+    rumour = _hits(head, f["not_funding"])
     hire = _hits(text, c["hiring"]["direct"]["terms"])
     spam = _hits(text, c["spam"]["terms"])
     slow = _hits(text, c["spam"]["slowdown"])

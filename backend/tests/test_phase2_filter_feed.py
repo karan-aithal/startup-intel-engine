@@ -43,3 +43,19 @@ async def test_feed_fetch_normalize_and_304():
     assert ev.source_event_id == "g1" and ev.published_at.year == 2026 and ev.detected_at >= ev.published_at
     r2 = await a.fetch(r.cursor)
     assert r2.items == [] and calls[-1] == "abc"
+
+
+def test_euro_amount_counts():
+    c = classify("Sumary lands €22 million to automate accounting")
+    assert c["label"] == "funding" and c["amount"].startswith("€22")
+
+
+def test_summary_recap_of_past_round_is_not_funding():
+    # funding keywords come from the title only
+    c = classify("ShareChat parent crosses Rs 1,000 Cr revenue", "It raised $200 million in a Series B last year.")
+    assert c["label"] == "none"
+
+
+def test_amount_taken_from_summary():
+    c = classify("Acme closes funding round", "The company said it brought in $5 million.")
+    assert c["label"] == "funding" and c["amount"] == "$5 million"
