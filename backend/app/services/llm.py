@@ -4,7 +4,9 @@ The model only proposes {value, evidence quote}. app.services.normalize decides 
 value supported by quote, valid normalization). Output is parsed into Pydantic schemas, the model has no tools, and
 the article is untrusted data in delimiters. Every attempt is recorded, including failures. Alerting never waits
 for this module: it runs from its own queue jobs."""
+import html
 import json
+import logging
 import re
 import time
 from typing import Literal
@@ -20,6 +22,7 @@ from app.services.normalize import ground as ground_funding
 
 JOB_CATEGORIES = ["software_engineering", "ai_ml_data", "cloud_devops", "cybersecurity", "product", "design", "other"]
 SENIORITY = ["intern", "fresher", "junior", "mid", "senior", "founding"]
+log = logging.getLogger(__name__)
 DUP_DISTANCE = 0.08  # cosine distance; 0.92 similarity
 DUP_DAYS = 14
 
@@ -117,10 +120,37 @@ async def extract(client: httpx.AsyncClient, base: str, model: str, task: str, b
     return {"valid": False, "result": {}, "attempts": attempts, "transport_error": False}
 
 
+def embed_text(body: str) -> str:
+    """Plain title + lede. The embedding server's physical batch is 512 tokens and article HTML (img tags, long URLs) tokenizes
+    heavily, so strip markup first; the first ~1200 characters carry the signal for duplicate detection."""
+    return clean(re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", body))).strip(), 1200)
+
+
 async def embed(client: httpx.AsyncClient, base: str, model: str, body: str) -> list[float]:
-    r = await client.post(f"{base}/embeddings", json={"model": model, "input": clean(body, 2000)}, timeout=120)
+    r = await client.post(f"{base}/embeddings", json={"model": model, "input": embed_text(body)}, timeout=120)
     r.raise_for_status()
     return r.json()["data"][0]["embedding"]
+
+
+async def link_semantic(s: AsyncSession, event_id: str, client: httpx.AsyncClient, base: str, model: str, body: str) -> bool:
+    """Store the event embedding and link it to the closest earlier event. False (and a warning) when the embedding server fails:
+    extraction is already saved, so this never fails the job, but it must not fail silently either."""
+    try:
+        vec = await embed(client, base, model, body)
+    except httpx.HTTPError as e:
+        log.warning("embedding failed for event %s via %s: %s", event_id, base, e)
+        return False
+    await s.execute(text("""INSERT INTO event_embeddings (source_event_id, embedding) VALUES (:e, CAST(:v AS vector))
+        ON CONFLICT DO NOTHING"""), {"e": event_id, "v": json.dumps(vec)})
+    await s.execute(text("""INSERT INTO event_relationships (event_id, related_event_id, kind, score, method)
+        SELECT :e, e2.source_event_id, 'same_event', 1 - (e2.embedding <=> CAST(:v AS vector)), 'semantic'
+        FROM event_embeddings e2 JOIN source_events se ON se.id = e2.source_event_id
+        WHERE e2.source_event_id <> :e AND se.detected_at > now() - make_interval(days => :w)
+          AND se.detected_at <= (SELECT detected_at FROM source_events WHERE id = :e)
+          AND e2.embedding <=> CAST(:v AS vector) <= :d
+        ORDER BY e2.embedding <=> CAST(:v AS vector) LIMIT 1 ON CONFLICT DO NOTHING"""),
+        {"e": event_id, "v": json.dumps(vec), "w": DUP_DAYS, "d": DUP_DISTANCE})
+    return True
 
 
 async def enrich_event(s: AsyncSession, event_id: str, client: httpx.AsyncClient, base: str, model: str, embed_model: str,
@@ -153,18 +183,6 @@ async def enrich_event(s: AsyncSession, event_id: str, client: httpx.AsyncClient
         if res["company"] and res["label"] == "funding":
             await add_candidate(s, res["company"], event_id)  # one candidate per event; the first name wins
         await rebuild_claims(s, event_id)
-        try:
-            vec = await embed(client, embed_base or base, embed_model, body)
-        except httpx.HTTPError:
-            return "ok"  # extraction is saved; the embedding is secondary and the semantic link is simply not made
-        await s.execute(text("""INSERT INTO event_embeddings (source_event_id, embedding) VALUES (:e, CAST(:v AS vector))
-            ON CONFLICT DO NOTHING"""), {"e": event_id, "v": json.dumps(vec)})
-        await s.execute(text("""INSERT INTO event_relationships (event_id, related_event_id, kind, score, method)
-            SELECT :e, e2.source_event_id, 'same_event', 1 - (e2.embedding <=> CAST(:v AS vector)), 'semantic'
-            FROM event_embeddings e2 JOIN source_events se ON se.id = e2.source_event_id
-            WHERE e2.source_event_id <> :e AND se.detected_at > now() - make_interval(days => :w)
-              AND se.detected_at <= (SELECT detected_at FROM source_events WHERE id = :e)
-              AND e2.embedding <=> CAST(:v AS vector) <= :d
-            ORDER BY e2.embedding <=> CAST(:v AS vector) LIMIT 1 ON CONFLICT DO NOTHING"""),
-            {"e": event_id, "v": json.dumps(vec), "w": DUP_DAYS, "d": DUP_DISTANCE})
+        await link_semantic(s, event_id, client, embed_base or base, embed_model, body)  # secondary: never fails the job
+        return "ok"
     return "ok" if o["valid"] else "rejected"

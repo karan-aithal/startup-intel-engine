@@ -1,5 +1,6 @@
 """Claim staging: regex and LLM extractions are merged into unverified claims with evidence.
 Nothing here writes funding_rounds, company_investors or founders. Phase 7 verifies claims and promotes them."""
+import html
 import json
 import re
 from decimal import Decimal
@@ -12,16 +13,29 @@ from app.services.normalize import parse_amounts, parse_stage
 from app.services.prefilter import classify
 
 
+ROUTED = "llm_label_none"
+
+
+def plain(s: str | None) -> str:
+    """Article HTML to text: tags (img src URLs break sentence splitting) and entities removed, whitespace collapsed."""
+    return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", s or ""))).strip()
+
+
 def sentence_with(body: str, needle: str) -> str | None:
+    """The sentence containing `needle`; when it is long, a 400-char window around the name so the quote always contains it."""
     for sent in re.split(r"(?<=[.!?])\s+", body):
-        if needle.lower() in sent.lower():
-            return sent.strip()[:400]
+        i = sent.lower().find(needle.lower())
+        if i >= 0:
+            sent = sent.strip()
+            i = max(0, sent.lower().find(needle.lower()))
+            return sent if len(sent) <= 400 else sent[max(0, i - 150):][:400]
     return None
 
 
 def regex_claim(title: str | None, content: str | None) -> dict:
-    body = f"{title or ''}. {content or ''}"
-    amt = classify(title, content)["amount"]
+    body = f"{plain(title)}. {plain(content)}"
+    # the headline amount is the round; a body amount can be a total, a loan or a currency conversion
+    amt = classify(title, "")["amount"] or classify(title, content)["amount"]
     parsed = parse_amounts(amt) if amt else []
     return {"company": extract_company(title), "stage": parse_stage(title or "") or parse_stage(body),
             "amount_text": amt, "amount_value": parsed[0][0] if parsed else None, "currency": parsed[0][1] if parsed else None,
@@ -94,26 +108,36 @@ async def rebuild_claims(s: AsyncSession, event_id: str) -> None:
     cid = (await s.execute(text("""SELECT matched_company_id FROM company_discovery_candidates
         WHERE source_event_id = :i AND status = 'accepted'"""), {"i": event_id})).scalar_one_or_none()
     rumour = ev.processing_status == "rumour" or (llm or {}).get("label") == "rumour"
+    # Routing: model label "none" (not a funding event) parks this event's claims as rejected. Reversible and per event: the funding
+    # claim carries evidence.rejected_by, and only rows rejected by this rule (never by Phase 7) are rewritten if a later run changes the label.
+    status = "rejected" if (llm or {}).get("label") == "none" else "unverified"
+    was = bool((await s.execute(text("""SELECT 1 FROM funding_round_claims WHERE source_event_id = :i AND status = 'rejected'
+        AND evidence->>'rejected_by' = :r"""), {"i": event_id, "r": ROUTED})).first())
     evidence = {"quotes": (llm or {}).get("quotes", {}), "field_status": (llm or {}).get("field_status", {}),
                 "origins": m["origins"], "alternatives": m["alternatives"], "llm_label": (llm or {}).get("label")}
+    if status == "rejected":
+        evidence["rejected_by"] = ROUTED
     await s.execute(text("""INSERT INTO funding_round_claims (source_event_id, company_id, company_name, stage, amount_value, currency,
-        amount_text, is_rumour, origin, evidence) VALUES (:e, :c, :n, :st, :av, :cur, :at, :ru, :o, CAST(:ev AS jsonb))
+        amount_text, is_rumour, origin, evidence, status) VALUES (:e, :c, :n, :st, :av, :cur, :at, :ru, :o, CAST(:ev AS jsonb), :s)
         ON CONFLICT (source_event_id) DO UPDATE SET company_id = EXCLUDED.company_id, company_name = EXCLUDED.company_name,
             stage = EXCLUDED.stage, amount_value = EXCLUDED.amount_value, currency = EXCLUDED.currency,
             amount_text = EXCLUDED.amount_text, is_rumour = EXCLUDED.is_rumour, origin = EXCLUDED.origin,
-            evidence = EXCLUDED.evidence, updated_at = now()
-        WHERE funding_round_claims.status = 'unverified'"""),
+            evidence = EXCLUDED.evidence, status = EXCLUDED.status, updated_at = now()
+        WHERE funding_round_claims.status = 'unverified' OR (funding_round_claims.status = 'rejected' AND CAST(:was AS boolean))"""),
         {"e": event_id, "c": cid, "n": m["company"], "st": m["stage"], "av": Decimal(str(m["amount_value"])) if m["amount_value"] is not None else None, "cur": m["currency"],
-         "at": m["amount_text"], "ru": rumour, "o": m["origin"], "ev": json.dumps(evidence, default=str)})
+         "at": m["amount_text"], "ru": rumour, "o": m["origin"], "ev": json.dumps(evidence, default=str), "s": status, "was": was})
     if cid is None:  # person claims need a company; they are written when the company is resolved
         return
     quotes = (llm or {}).get("quotes", {})
     for kind, table in (("investors", "company_investor_claims"), ("founders", "company_founder_claims")):
+        await s.execute(text(f"""DELETE FROM {table} WHERE source_event_id = :e AND (status = 'unverified' OR (status = 'rejected' AND CAST(:was AS boolean)))
+            AND canonical_name <> ALL(CAST(:keep AS text[]))"""), {"e": event_id, "keep": list(m["people"][kind]), "was": was})
         for c, p in m["people"][kind].items():
             quote = quotes.get(f"{kind}:{p['name']}") or sentence_with(rx["body"], p["name"])
             upd = "role = EXCLUDED.role, " if kind == "investors" else ""
             await s.execute(text(f"""INSERT INTO {table} (source_event_id, company_id, name, canonical_name, evidence_quote, origin
-                {', role' if kind == 'investors' else ''}) VALUES (:e, :c, :n, :cn, :q, :o{', :r' if kind == 'investors' else ''})
+                {', role' if kind == 'investors' else ''}, status) VALUES (:e, :c, :n, :cn, :q, :o{', :r' if kind == 'investors' else ''}, :s)
                 ON CONFLICT (company_id, source_event_id, canonical_name) DO UPDATE SET {upd}evidence_quote = EXCLUDED.evidence_quote,
-                origin = EXCLUDED.origin WHERE {table}.status = 'unverified'"""),
-                {"e": event_id, "c": cid, "n": p["name"], "cn": c, "q": quote, "o": p["origin"], **({"r": p["role"]} if kind == "investors" else {})})
+                origin = EXCLUDED.origin, status = EXCLUDED.status
+                WHERE {table}.status = 'unverified' OR ({table}.status = 'rejected' AND CAST(:was AS boolean))"""),
+                {"e": event_id, "c": cid, "n": p["name"], "cn": c, "q": quote, "o": p["origin"], "s": status, "was": was, **({"r": p["role"]} if kind == "investors" else {})})
