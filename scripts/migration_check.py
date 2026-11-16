@@ -2,7 +2,7 @@
 
 Usage: cd backend && env -u PYTHONPATH uv run python ../scripts/migration_check.py empty|copy|live|cleanup
   empty    scratch schema, migrate 0001 -> head; drift + constraint/index names vs the ORM; downgrade/upgrade round trip
-  copy     scratch schema at 0002 loaded with a copy of the real rows, migrate to head; row counts + checksums must not change
+  copy     scratch schema at the real database's current revision loaded with a copy of the real rows, migrate to head; row counts + checksums must not change
   live     read-only: drift + names of the real database against the ORM
   cleanup  drop the scratch schemas
 Exits non-zero on any failure. Needs no CREATEDB: scratch schemas live in the same database (search_path scratch,public).
@@ -124,7 +124,8 @@ async def run_empty(schema):
 
 
 async def run_copy(schema):
-    await asyncio.to_thread(alembic, schema, "upgrade", "0002")
+    live = (await sql("public", "select version_num from alembic_version"))[0][0]  # the schema the real rows were written under
+    await asyncio.to_thread(alembic, schema, "upgrade", live)
     tabs = [r[0] for r in await sql("public", "select relname from pg_stat_user_tables where schemaname='public' and relname<>'alembic_version' and n_live_tup>0")]
     pending, last = list(tabs), ""
     for _ in range(6):  # FK order: retry until every table is in

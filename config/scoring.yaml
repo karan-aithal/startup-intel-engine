@@ -1,0 +1,72 @@
+# Phase 7 verification and scoring. Weights are RANKING weights, not probabilities.
+# PROPOSED defaults: confirm or change before relying on the scores. alert_thresholds is deliberately NOT wired:
+# instant / hourly digest / silent cut-offs need the owner's confirmation first.
+
+evidence_weights:            # PROMPT.md "Verification" table
+  official_company: 95
+  official_investor: 95
+  official_filing: 95        # SEC Form D
+  press_wire: 90
+  reputable_publication: 90
+  founder: 85
+  discussion: 55
+  community: 25              # anonymous / unknown: the default for any source not listed below
+
+official_types: [official_company, official_investor, official_filing, press_wire]   # one of these can VERIFY on its own
+
+source_types:                # exact source_registry.name -> evidence type
+  PR Newswire VC: press_wire
+  SEC EDGAR Form D: official_filing
+  Alerts Inbox: discussion
+  Entrackr: reputable_publication
+  Inc42: reputable_publication
+  YourStory: reputable_publication
+  Mint Companies: reputable_publication
+  The Arc: reputable_publication
+  ET Startups: reputable_publication
+  TechCrunch Startups: reputable_publication
+  TechCrunch All: reputable_publication
+  Crunchbase News: reputable_publication
+  EU-Startups: reputable_publication
+  Sifted: reputable_publication
+  TechCabal: reputable_publication
+  Rest of World: reputable_publication
+  # Hacker News, Bluesky, share-to-bot and anything unlisted -> community (25)
+
+verification:
+  strong_weight: 90          # a "strong" independent source
+  partial_weight: 85         # one non-official source this strong -> PARTIALLY_VERIFIED
+  weak_weight: 55            # two independent sources at least this strong -> PARTIALLY_VERIFIED
+  corroboration_bonus: 5     # added to confidence per extra independent source (max 2 extra)
+  rumour_confidence_cap: 40
+  contradiction_penalty: 10
+  contradiction_margin: 10   # a conflicting round loses (CONTRADICTED) when the other is this much more confident
+  amount_tolerance: 0.005
+  cluster_window_days: 14    # claims this close in time can describe the same round
+  expire_partial_days: 60    # PARTIALLY_VERIFIED with no newer evidence for this long -> EXPIRED
+
+scores:                      # F = 0.30S + 0.25R + 0.20I + 0.15N + 0.10V ; global drops I and renormalises
+  funding: {S: 0.30, R: 0.25, I: 0.20, N: 0.15, V: 0.10}
+  emerging: {G: 0.30, D: 0.25, I: 0.20, R: 0.15, N: 0.10}
+  freshness_half_life_days: 7
+  novelty_half_life_days: 60
+  stage_relevance: {pre-seed: 90, seed: 100, pre-series a: 90, series a: 85, series b: 60, series c: 40, bridge: 40, strategic: 40}
+  stage_unknown: 50
+
+risk_flags:                  # name: penalty subtracted from the final score
+  single_independent_source: 10
+  community_only: 20
+  rumour_only: 20
+  conflicting_amount: 15
+  extraction_disagreement: 5
+  no_amount: 5
+
+correlation:
+  hiring_window_days: 90     # jobs published within this many days after the funding announcement
+  surge_jobs: 5              # new jobs in surge_days
+  surge_days: 30
+  senior_roles: 2            # senior or founding roles in surge_days
+  senior_levels: [senior, founding]
+  growth_per_signal: 25      # G = min(100, signals in last 90 days * this)
+
+alert_thresholds: null       # NOT enabled. Awaiting owner confirmation.

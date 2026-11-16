@@ -100,6 +100,7 @@ class FundingRoundClaim(Base):
     origin: Mapped[str] = mapped_column(String(10))  # llm / regex / merged
     evidence: Mapped[dict] = jsonb()  # per-field quotes and grounding status, plus conflicting alternatives
     status: Mapped[str] = mapped_column(String(12), server_default="unverified")
+    funding_round_id: Mapped[uuid.UUID | None] = uuid_fk("funding_rounds.id", nullable=True, ondelete="SET NULL")  # set by Phase 7
     created_at = ts()
     updated_at = ts()
     __table_args__ = (

@@ -19,10 +19,12 @@ from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.db.session import get_engine, get_sessionmaker
 from app.services import ats, companies, queue
+from app.services.correlate import correlate_all
 from app.services.discovery import discover_pending
 from app.services.llm import enrich_event
 from app.services.notify import deliver_pending, make_sink
 from app.services.pipeline import process_event
+from app.services.verify import verify_all
 
 log = structlog.get_logger()
 WORKER = f"{socket.gethostname()}-{os.getpid()}"
@@ -99,6 +101,11 @@ async def llm_jobs(sm, cfg) -> int:
     return len(jobs)
 
 
+async def verification(sm) -> None:
+    """Claims -> evidence -> funding rounds, then correlation signals and scores. Never touches the alert path."""
+    log.info("verification", rounds=await verify_all(sm), companies_correlated=await correlate_all(sm))
+
+
 async def maintenance(sm, cfg) -> None:
     """Hot-company polling rates, and the monthly Common Crawl seeding run (when that route is enabled)."""
     async with sm() as s:
@@ -169,6 +176,7 @@ async def _run(sm, sink, cfg, beat):
         _loop("ats", lambda: ats.detect_pending(sm, cfg.auto_watch_cap, cfg.auto_board_cap), 120),
         *([_loop("llm", lambda: llm_jobs(sm, cfg), 3)] if cfg.llm_enabled else []),
         _loop("maintenance", lambda: maintenance(sm, cfg), 3600),
+        _loop("verification", lambda: verification(sm), 300),
         *(stream_forever(sm, n, c) for n, c in await _streams(sm)),
     )
 

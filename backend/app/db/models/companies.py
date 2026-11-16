@@ -39,6 +39,8 @@ class Company(Base, Timestamps):
     watched: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     muted: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     meta: Mapped[dict] = jsonb()
+    emerging_global: Mapped[int | None] = mapped_column(SmallInteger)  # E score without the India term
+    emerging_india: Mapped[int | None] = mapped_column(SmallInteger)
     __table_args__ = (
         Index("ix_companies_canonical_name_trgm", "canonical_name",
               postgresql_using="gin", postgresql_ops={"canonical_name": "gin_trgm_ops"}),
@@ -105,6 +107,8 @@ class FundingRound(Base, Timestamps):
     risk_flags: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
     # Set only when evidence is sufficient to say two reports describe the same round.
     identity_key: Mapped[str | None] = mapped_column(String(300))
+    score_global: Mapped[int | None] = mapped_column(SmallInteger)  # F without the India term
+    score_india: Mapped[int | None] = mapped_column(SmallInteger)
     __table_args__ = (
         Index("uq_funding_rounds_identity_key", "identity_key", unique=True,
               postgresql_where=text("identity_key is not null")),
@@ -185,7 +189,11 @@ class CompanySignal(Base):
     source_event_id: Mapped[uuid.UUID | None] = uuid_fk("source_events.id", nullable=True, ondelete="SET NULL")
     occurred_at = ts()
     data: Mapped[dict] = jsonb()
-    __table_args__ = (Index("ix_company_signals_company_time", "company_id", "occurred_at"),)
+    signal_key: Mapped[str | None] = mapped_column(Text)  # makes a rule's output idempotent per company
+    __table_args__ = (
+        Index("ix_company_signals_company_time", "company_id", "occurred_at"),
+        UniqueConstraint("company_id", "signal_type", "signal_key", name="uq_company_signals_key"),
+    )
 
 
 class Evidence(Base):
@@ -205,6 +213,8 @@ class Evidence(Base):
     supports: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))  # false = contradicts
     created_at = ts()
     __table_args__ = (
+        Index("uq_evidence_round_event", "funding_round_id", "source_event_id", unique=True,
+              postgresql_where=text("funding_round_id is not null and source_event_id is not null")),
         CheckConstraint("weight between 0 and 100", name="weight_range"),
         CheckConstraint(
             "company_id is not null or funding_round_id is not null or job_posting_id is not null",
