@@ -49,7 +49,7 @@ async def deliver_pending(sm, sink, tz: str = "Asia/Kolkata", limit: int = 10, p
     sent = 0
     for d in batch:
         try:
-            msg_id = await sink.send(d["topic"], format_alert(d["topic"], d["payload"], tz))
+            msg_id = await sink.send(d["topic"], format_alert(d["topic"], d["payload"], tz, resent=bool(d.get("possible_duplicate"))))
             async with sm() as s:
                 await outbox.mark_sent(s, str(d["id"]), msg_id)
                 await s.commit()

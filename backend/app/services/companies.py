@@ -28,7 +28,8 @@ def extract_company(title: str | None) -> str | None:
     m = NAME_VERB.match((title or "").strip())
     if not m:
         return None
-    name = re.split(r"(?:-based|, a| , an) ", m.group(1))[-1].strip(" ,:")
+    name = re.split(r"\s+(?:in talks|plans?|set to|looking|looks|eyes|seeks?|aims?|wants?|is|to)\b.*", m.group(1))[0]  # "X in talks to raise"
+    name = re.split(r"(?:-based|, a| , an) ", name)[-1].strip(" ,:")
     name = re.sub(r"^.*\bstartup\s+", "", name, flags=re.I)
     return name if name and name[0].isupper() and len(name.split()) <= 4 else None
 
@@ -54,8 +55,9 @@ def extract_founders(text_: str) -> list[str]:
 
 async def add_candidate(s: AsyncSession, name: str, event_id: str | None = None, domain: str | None = None, evidence: dict | None = None) -> None:
     await s.execute(text("""INSERT INTO company_discovery_candidates (name, domain, source_event_id, evidence)
-        SELECT :n, :d, :e, CAST(:ev AS jsonb) WHERE NOT EXISTS (
-            SELECT 1 FROM company_discovery_candidates WHERE lower(name) = lower(:n) AND status = 'pending')"""),
+        SELECT :n, :d, :e, CAST(:ev AS jsonb) WHERE CAST(:e AS uuid) IS NOT NULL OR NOT EXISTS (
+            SELECT 1 FROM company_discovery_candidates WHERE lower(name) = lower(:n) AND status = 'pending')
+        ON CONFLICT (source_event_id) WHERE source_event_id IS NOT NULL DO NOTHING"""),
         {"n": name, "d": domain, "e": event_id, "ev": json.dumps(evidence or {})})
 
 
@@ -134,28 +136,12 @@ async def resolve_candidate(s: AsyncSession, cand, client: httpx.AsyncClient) ->
     await s.execute(text("""UPDATE company_discovery_candidates SET status = 'accepted', matched_company_id = :c,
         match_confidence = :m WHERE id = :i"""), {"c": cid, "m": conf, "i": cand.id})
     if cand.source_event_id:
-        await store_people(s, cid, str(cand.source_event_id))
+        from app.services.claims import (
+            rebuild_claims,  # claims need the resolved company id; imported late (claims imports this module)
+        )
+
+        await rebuild_claims(s, str(cand.source_event_id))
     return cid
-
-
-async def store_people(s: AsyncSession, company_id: str, event_id: str) -> None:
-    """Investors and founders named in the funding article, each tied to an evidence row for that article."""
-    ev = (await s.execute(text("SELECT title, content, canonical_url FROM source_events WHERE id = :i"), {"i": event_id})).one()
-    body = f"{ev.title or ''}. {ev.content or ''}"
-    invs, founders = extract_investors(body), extract_founders(body)
-    if not (invs or founders):
-        return
-    ev_id = (await s.execute(text("""INSERT INTO evidence (company_id, source_event_id, evidence_type, weight, url, snippet)
-        VALUES (:c, :e, 'funding_article', 40, :u, :s) RETURNING id"""),
-        {"c": company_id, "e": event_id, "u": ev.canonical_url, "s": (ev.title or "")[:500]})).scalar_one()
-    for name, role in invs:
-        iid = (await s.execute(text("""INSERT INTO investors (name, canonical_name) VALUES (:n, :c)
-            ON CONFLICT (canonical_name) DO UPDATE SET name = investors.name RETURNING id"""), {"n": name, "c": canonical(name)})).scalar_one()
-        await s.execute(text("""INSERT INTO company_investors (company_id, investor_id, role, evidence_id) VALUES (:c, :i, :r, :e)
-            ON CONFLICT DO NOTHING"""), {"c": company_id, "i": iid, "r": role, "e": ev_id})
-    for f in founders:
-        await s.execute(text("INSERT INTO founders (company_id, name, evidence_id) VALUES (:c, :n, :e) ON CONFLICT DO NOTHING"),
-                        {"c": company_id, "n": f, "e": ev_id})
 
 
 async def resolve_pending(sm, limit: int = 10, client: httpx.AsyncClient | None = None) -> int:

@@ -39,33 +39,81 @@ async def watched_count(s: AsyncSession) -> int:
     return (await s.execute(text("SELECT count(*) FROM companies WHERE watched"))).scalar_one()
 
 
-async def register_board(s: AsyncSession, company_id: str, provider: str, token: str, via: str, cap: int,
-                         client: httpx.AsyncClient | None = None) -> str:
-    """Verify the board returns jobs, record it, and start polling it if the company fits under the cap.
-    Returns 'registered' | 'candidate' (over cap) | 'invalid'."""
+async def active_boards(s: AsyncSession) -> int:
+    return (await s.execute(text("SELECT count(*) FROM ats_boards WHERE status = 'active'"))).scalar_one()
+
+
+async def register_board(s: AsyncSession, company_id: str, provider: str, token: str, via: str, company_cap: int, board_cap: int,
+                         client: httpx.AsyncClient | None = None, evidence: dict | None = None) -> str:
+    """Verify the board returns jobs, persist it with its evidence, then let promotion decide whether it is polled.
+    Returns 'registered' (polling now) | 'candidate' (stored, waiting for room under either cap) | 'invalid'."""
     try:
-        await AtsAdapter(provider, token, client).fetch()
+        fetched = await AtsAdapter(provider, token, client).fetch()
     except Exception:  # noqa: BLE001 - dead or private board
         return "invalid"
     name = f"{provider}:{token}"
-    watched = (await s.execute(text("SELECT watched FROM companies WHERE id = :i"), {"i": company_id})).scalar_one()
-    room = watched or await watched_count(s) < cap
     hot = (await s.execute(text("SELECT coalesce(hot_until > now(), false) FROM companies WHERE id = :i"), {"i": company_id})).scalar_one()
     await register_source(s, name, "api", category="hiring", access_method=f"{provider} job board API", docs_url=DOCS[provider],
                           poll_interval_seconds=HOT_POLL if hot else NORMAL_POLL,
                           config={"kind": "ats", "provider": provider, "token": token})
-    await s.execute(text("""INSERT INTO ats_boards (company_id, provider, board_token, board_url, status, discovered_via)
-        VALUES (:c, :p, :t, :u, :st, :v) ON CONFLICT (provider, board_token)
-        DO UPDATE SET company_id = coalesce(ats_boards.company_id, :c), status = :st"""),
-        {"c": company_id, "p": provider, "t": token, "u": ATS_URLS[provider].format(t=token), "st": "active" if room else "candidate", "v": via})
-    if room:
-        await set_enabled(s, name, "api", True)
-        await s.execute(text("UPDATE companies SET watched = true WHERE id = :i"), {"i": company_id})
-        return "registered"
-    return "candidate"
+    await s.execute(text("""INSERT INTO ats_boards (company_id, provider, board_token, board_url, status, discovered_via, evidence,
+            verification_status, verified_at, last_job_count)
+        VALUES (:c, :p, :t, :u, 'candidate', :v, CAST(:ev AS jsonb), 'verified', now(), :n)
+        ON CONFLICT (provider, board_token) DO UPDATE SET company_id = coalesce(ats_boards.company_id, :c),
+            verification_status = 'verified', verified_at = now(), last_job_count = :n,
+            evidence = CASE WHEN ats_boards.evidence = '{}'::jsonb THEN CAST(:ev AS jsonb) ELSE ats_boards.evidence END"""),
+        {"c": company_id, "p": provider, "t": token, "u": ATS_URLS[provider].format(t=token), "v": via, "n": len(fetched.items),
+         "ev": json.dumps(evidence or {"method": via})})
+    await promote_candidates(s, company_cap, board_cap, client)
+    return "registered" if (await s.execute(text("SELECT status = 'active' FROM ats_boards WHERE provider = :p AND board_token = :t"),
+                                            {"p": provider, "t": token})).scalar_one() else "candidate"
 
 
-async def detect_for_company(s: AsyncSession, company_id: str, client: httpx.AsyncClient, cap: int) -> list[str]:
+async def promote_candidates(s: AsyncSession, company_cap: int, board_cap: int, client: httpx.AsyncClient | None = None, limit: int = 100) -> int:
+    """Enable stored candidate boards while BOTH limits have room: companies auto-watched and active auto boards.
+    Priority: recently funded, then India-linked, then oldest. Boards without a company are never promoted (seed list only)."""
+    rows = (await s.execute(text("""SELECT b.id, b.provider, b.board_token, b.company_id, b.verification_status, c.watched,
+            coalesce(c.hot_until > now(), false) AS hot, c.is_india_linked
+        FROM ats_boards b JOIN companies c ON c.id = b.company_id
+        WHERE b.status = 'candidate' AND NOT c.muted ORDER BY hot DESC, c.is_india_linked DESC, b.created_at LIMIT :n"""), {"n": limit})).all()
+    boards, companies, promoted = await active_boards(s), await watched_count(s), 0
+    for r in rows:
+        if boards >= board_cap:
+            break
+        if not r.watched and companies >= company_cap:
+            continue
+        if r.verification_status != "verified":  # Common Crawl style candidates are verified only now
+            try:
+                await AtsAdapter(r.provider, r.board_token, client).fetch()
+            except Exception:  # noqa: BLE001
+                await s.execute(text("UPDATE ats_boards SET verification_status = 'failed' WHERE id = :i"), {"i": r.id})
+                continue
+            await s.execute(text("UPDATE ats_boards SET verification_status = 'verified', verified_at = now() WHERE id = :i"), {"i": r.id})
+        await set_enabled(s, f"{r.provider}:{r.board_token}", "api", True)
+        reason = "hot company" if r.hot else "india-linked" if r.is_india_linked else "queue order"
+        await s.execute(text("UPDATE ats_boards SET status = 'active', promoted_at = now(), promotion_reason = :r WHERE id = :i"), {"r": reason, "i": r.id})
+        await s.execute(text("UPDATE companies SET watched = true WHERE id = :i"), {"i": r.company_id})
+        boards += 1
+        companies += 0 if r.watched else 1
+        promoted += 1
+    return promoted
+
+
+async def demote_stale(s: AsyncSession) -> int:
+    """Active boards that keep failing, or stay empty for 60 days, go back to candidates and free their slot."""
+    rows = (await s.execute(text("""SELECT b.id, b.company_id, b.provider || ':' || b.board_token AS name,
+            CASE WHEN r.consecutive_failures >= 3 THEN 'demoted: 3 consecutive failures' ELSE 'demoted: no jobs for 60 days' END AS why
+        FROM ats_boards b JOIN source_registry r ON r.name = b.provider || ':' || b.board_token AND r.connector_type = 'api'
+        WHERE b.status = 'active' AND (r.consecutive_failures >= 3 OR (b.last_job_count = 0 AND b.promoted_at < now() - interval '60 days'))"""))).all()
+    for r in rows:
+        await set_enabled(s, r.name, "api", False)
+        await s.execute(text("UPDATE ats_boards SET status = 'candidate', promoted_at = NULL, promotion_reason = :w WHERE id = :i"), {"w": r.why, "i": r.id})
+        await s.execute(text("""UPDATE companies SET watched = false WHERE id = :c
+            AND NOT EXISTS (SELECT 1 FROM ats_boards WHERE company_id = :c AND status = 'active')"""), {"c": r.company_id})
+    return len(rows)
+
+
+async def detect_for_company(s: AsyncSession, company_id: str, client: httpx.AsyncClient, company_cap: int, board_cap: int) -> list[str]:
     """Look for ATS links on the careers page (or homepage) and register verified boards."""
     row = (await s.execute(text("SELECT website_url, careers_url FROM companies WHERE id = :i"), {"i": company_id})).one()
     results = []
@@ -75,13 +123,14 @@ async def detect_for_company(s: AsyncSession, company_id: str, client: httpx.Asy
         except httpx.HTTPError:
             continue
         for provider, tok in find_boards(r.text if r.status_code == 200 else ""):
-            results.append(f"{provider}:{tok}={await register_board(s, company_id, provider, tok, 'careers page link', cap, client)}")
+            ev = {"method": "link on careers/home page", "found_on": str(r.url), "provider": provider, "token": tok}
+            results.append(f"{provider}:{tok}={await register_board(s, company_id, provider, tok, 'careers page link', company_cap, board_cap, client, ev)}")
         if results:
             break
     return results
 
 
-async def detect_pending(sm, cap: int, limit: int = 5, client: httpx.AsyncClient | None = None) -> int:
+async def detect_pending(sm, company_cap: int, board_cap: int, limit: int = 5, client: httpx.AsyncClient | None = None) -> int:
     """Companies with a website and no board yet, not scanned for ATS before."""
     async with sm() as s:
         ids = (await s.execute(text("""SELECT id FROM companies WHERE website_url IS NOT NULL AND NOT muted
@@ -92,7 +141,7 @@ async def detect_pending(sm, cap: int, limit: int = 5, client: httpx.AsyncClient
         for cid in ids:
             async with sm() as s:
                 try:
-                    n += len(await detect_for_company(s, str(cid), c, cap))
+                    n += len(await detect_for_company(s, str(cid), c, company_cap, board_cap))
                 except Exception:  # noqa: BLE001
                     await s.rollback()
                 await s.execute(text("UPDATE companies SET meta = coalesce(meta, '{}'::jsonb) || jsonb_build_object('ats_scanned_at', now()::text) WHERE id = :i"), {"i": cid})

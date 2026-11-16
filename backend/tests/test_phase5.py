@@ -61,10 +61,16 @@ async def test_unknown_company_to_jobs(sm):
         assert co.website_url == "https://zypto.com" and co.hot
         ev = (await s.execute(text("SELECT evidence_type, snippet FROM evidence WHERE evidence_type='website_identity'"))).one()
         assert "title match" in ev.snippet
-        assert (await s.execute(text("SELECT count(*) FROM company_investors"))).scalar_one() == 1
-        assert (await s.execute(text("SELECT name FROM founders"))).scalar_one() == "Asha Rao"
+        # unverified facts are staged as claims; the authoritative tables stay empty until Phase 7 verifies them
+        assert (await s.execute(text("SELECT name, origin FROM company_investor_claims"))).one() == ("Peak XV", "regex")
+        assert (await s.execute(text("SELECT name FROM company_founder_claims"))).scalar_one() == "Asha Rao"
+        assert (await s.execute(text("SELECT count(*) FROM company_investors"))).scalar_one() == 0
+        assert (await s.execute(text("SELECT count(*) FROM founders"))).scalar_one() == 0
+        assert (await s.execute(text("SELECT count(*) FROM funding_rounds"))).scalar_one() == 0
+        claim = (await s.execute(text("SELECT company_id, stage, amount_value, currency FROM funding_round_claims"))).one()
+        assert str(claim.company_id) == str(co.id) and (claim.stage, int(claim.amount_value), claim.currency) == ("seed", 5000000, "USD")
     await discover_pending(sm, client=c)  # finds /careers
-    assert await ats.detect_pending(sm, cap=200, client=c) == 1
+    assert await ats.detect_pending(sm, 200, 300, client=c) == 1
     async with sm() as s:
         b = (await s.execute(text("SELECT status FROM ats_boards WHERE board_token='zypto'"))).scalar_one()
         r = (await s.execute(text("SELECT enabled, poll_interval_seconds FROM source_registry WHERE name='greenhouse:zypto'"))).one()
@@ -81,7 +87,7 @@ async def test_cap_stops_auto_watch(sm):
         cid = (await s.execute(text("INSERT INTO companies (name, canonical_name) VALUES ('Zypto','zypto') RETURNING id"))).scalar_one()
         await s.commit()
     async with sm() as s:
-        assert await ats.register_board(s, str(cid), "greenhouse", "zypto", "test", cap=0, client=web()) == "candidate"
+        assert await ats.register_board(s, str(cid), "greenhouse", "zypto", "test", 0, 300, client=web()) == "candidate"
         await s.commit()
     async with sm() as s:
         assert not (await s.execute(text("SELECT enabled FROM source_registry WHERE name='greenhouse:zypto'"))).scalar_one()

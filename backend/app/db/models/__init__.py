@@ -13,7 +13,15 @@ from app.db.models.companies import (  # noqa: F401
     Investor,
     JobPosting,
 )
-from app.db.models.llm import EventEmbedding, LlmRun  # noqa: F401
+from app.db.models.llm import (  # noqa: F401
+    CompanyFounderClaim,
+    CompanyInvestorClaim,
+    EventEmbedding,
+    EventRelationship,
+    FundingRoundClaim,
+    LlmAttempt,
+    LlmRun,
+)
 from app.db.models.ops import AlertDelivery, JobQueue, WorkerHeartbeat  # noqa: F401
 from app.db.models.sources import (  # noqa: F401
     Feedback,

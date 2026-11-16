@@ -5,6 +5,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Index,
+    Integer,
     Numeric,
     SmallInteger,
     String,
@@ -138,8 +139,15 @@ class AtsBoard(Base, Timestamps):
     board_url: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), server_default="active")
     discovered_via: Mapped[str | None] = mapped_column(String(60))
+    evidence: Mapped[dict] = jsonb()  # where the board was found: page, href, method
+    verification_status: Mapped[str] = mapped_column(String(12), server_default="unverified")  # unverified/verified/failed
+    verified_at = ts(default_now=False)
+    last_job_count: Mapped[int | None] = mapped_column(Integer)
+    promoted_at = ts(default_now=False)
+    promotion_reason: Mapped[str | None] = mapped_column(String(60))
     last_polled_at = ts(default_now=False)
     last_success_at = ts(default_now=False)
+    next_poll_at = ts(default_now=False)
     __table_args__ = (UniqueConstraint("provider", "board_token", name="uq_ats_boards_provider_token"),)
 
 
@@ -216,6 +224,9 @@ class CompanySource(Base, Timestamps):
     url: Mapped[str] = mapped_column(Text)
     evidence: Mapped[dict] = jsonb()
     status: Mapped[str] = mapped_column(String(20), server_default="candidate")
+    verified_at = ts(default_now=False)  # first successful poll
+    last_polled_at = ts(default_now=False)
+    next_poll_at = ts(default_now=False)
     __table_args__ = (UniqueConstraint("company_id", "url", name="uq_company_sources_company_url"),)
 
 
@@ -229,3 +240,5 @@ class CompanyDiscoveryCandidate(Base, Timestamps):
     match_confidence: Mapped[int | None] = mapped_column(SmallInteger)
     status: Mapped[str] = mapped_column(String(20), server_default="pending")  # pending/accepted/rejected/unresolved
     evidence: Mapped[dict] = jsonb()
+    __table_args__ = (Index("uq_discovery_candidates_event", "source_event_id", unique=True,
+                            postgresql_where=text("source_event_id is not null")),)

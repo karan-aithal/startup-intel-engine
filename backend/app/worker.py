@@ -85,8 +85,11 @@ async def llm_jobs(sm, cfg) -> int:
         for j in jobs:
             try:
                 async with sm() as s:
-                    await enrich_event(s, j["payload"]["event_id"], c, cfg.llm_base_url, cfg.llm_model, cfg.llm_embed_model,
-                                       cfg.llm_embed_base_url)
+                    out = await enrich_event(s, j["payload"]["event_id"], c, cfg.llm_base_url, cfg.llm_model, cfg.llm_embed_model,
+                                             cfg.llm_embed_base_url)
+                    if out == "retry":  # server problem: keep the attempt records, then re-queue with backoff
+                        await s.commit()
+                        raise ConnectionError("model server unavailable or timed out")
                     await queue.complete(s, str(j["id"]), WORKER)
                     await s.commit()
             except Exception as exc:  # noqa: BLE001 - model server down: back off and retry
@@ -96,9 +99,11 @@ async def llm_jobs(sm, cfg) -> int:
     return len(jobs)
 
 
-async def maintenance(sm) -> None:
+async def maintenance(sm, cfg) -> None:
     """Hot-company polling rates, and the monthly Common Crawl seeding run (when that route is enabled)."""
     async with sm() as s:
+        await ats.demote_stale(s)
+        await ats.promote_candidates(s, cfg.auto_watch_cap, cfg.auto_board_cap)
         await ats.refresh_hot_polling(s)
         row = (await s.execute(text("""SELECT r.id, r.enabled, (SELECT max(started_at) FROM source_runs WHERE source_id = r.id) AS last
             FROM source_registry r WHERE r.name = 'Common Crawl ATS' AND r.connector_type = 'discovery'"""))).first()
@@ -161,9 +166,9 @@ async def _run(sm, sink, cfg, beat):
         _loop("heartbeat", beat, 30),
         _loop("discovery", lambda: discover_pending(sm), 600),
         _loop("companies", lambda: companies.resolve_pending(sm), 60),
-        _loop("ats", lambda: ats.detect_pending(sm, cfg.auto_watch_cap), 120),
+        _loop("ats", lambda: ats.detect_pending(sm, cfg.auto_watch_cap, cfg.auto_board_cap), 120),
         *([_loop("llm", lambda: llm_jobs(sm, cfg), 3)] if cfg.llm_enabled else []),
-        _loop("maintenance", lambda: maintenance(sm), 3600),
+        _loop("maintenance", lambda: maintenance(sm, cfg), 3600),
         *(stream_forever(sm, n, c) for n, c in await _streams(sm)),
     )
 

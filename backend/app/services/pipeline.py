@@ -8,7 +8,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.services.claims import rebuild_claims
 from app.services.companies import add_candidate, extract_company
+from app.services.dedup import match_logical
 from app.services.outbox import add_alert
 from app.services.prefilter import classify
 from app.services.queue import enqueue
@@ -42,6 +44,9 @@ async def process_event(s: AsyncSession, event_id: str) -> str:
     if label == "hiring" and ev["event_type"] == "job":
         pub = ev["published_at"]
         alertable = pub is not None and datetime.now(UTC) - pub <= JOB_MAX_AGE
+    duplicate = label in ("funding", "rumour") and ev["event_type"] != "form_d" and await match_logical(s, event_id, label)
+    if duplicate:
+        alertable = False  # confirmed duplicate of an event already alerted: linked in event_relationships, not re-sent
     if label == "funding" and ev["event_type"] != "form_d":  # heavy resolution runs in its own worker loop, never here
         if name := ev["company_name"] or extract_company(ev["title"]):
             await add_candidate(s, name, str(ev["id"]))
@@ -55,6 +60,8 @@ async def process_event(s: AsyncSession, event_id: str) -> str:
             topic=pick_topic(label, india))
     await s.execute(text("UPDATE source_events SET processing_status = :l WHERE id = :id"),
                     {"l": label, "id": event_id})
+    if label in ("funding", "rumour"):
+        await rebuild_claims(s, event_id)  # cheap regex claims now; the LLM job merges its result in later
     if get_settings().llm_enabled and (label in ("funding", "rumour") or ev["event_type"] == "job"):
         await enqueue(s, "llm_enrich", {"event_id": event_id}, event_id, priority=90)  # own queue kind: never delays alerts
     return label
@@ -66,10 +73,10 @@ def _fmt(ts, tz: ZoneInfo) -> str:
     return ts.astimezone(tz).strftime("%d %b %Y %H:%M %Z") if ts else "unknown"
 
 
-def format_alert(topic: str | None, p: dict, tz_name: str = "Asia/Kolkata") -> str:
+def format_alert(topic: str | None, p: dict, tz_name: str = "Asia/Kolkata", resent: bool = False) -> str:
     """Telegram HTML. Both timestamps appear: when the source published it, and when we first saw it."""
     tz, e = ZoneInfo(tz_name), html.escape
-    lines = [f"<b>{LABEL_TITLE.get(p['label'], p['label'].upper())}</b> · {e(topic or '')}", f"<b>{e(p['title'] or '')}</b>"]
+    lines = [f"<b>{LABEL_TITLE.get(p['label'], p['label'].upper())}</b> · {e(topic or '')}" + (" (resent)" if resent else ""), f"<b>{e(p['title'] or '')}</b>"]
     if p.get("company"):
         lines.append(f"Company: {e(p['company'])}")
     if p.get("amount"):

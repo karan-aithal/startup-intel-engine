@@ -1,6 +1,7 @@
 import uuid
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Index,
     Integer,
@@ -62,6 +63,7 @@ class AlertDelivery(Base):
     max_attempts: Mapped[int] = mapped_column(Integer, server_default=text("8"))
     next_attempt_at = ts()
     lease_expires_at = ts(default_now=False)
+    possible_duplicate: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))  # re-claimed after a lease expired
     external_message_id: Mapped[str | None] = mapped_column(String(100))
     last_error: Mapped[str | None] = mapped_column(Text)
     created_at = ts()

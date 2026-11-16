@@ -34,13 +34,18 @@ async def main():
     rows = uniq[:limit] if limit else uniq
     tp, fp, fn, bad, lat, wrong = Counter(), Counter(), Counter(), 0, [], []
     kw_ok = 0
+    fields, funding_n = Counter(), 0
     async with httpx.AsyncClient() as c:
         for i, r in enumerate(rows, 1):
             want = r["correct_label"].strip().lower()
             o = await extract(c, cfg.llm_base_url, model, "funding", f"{r['title']}\n{r.get('summary') or ''}")
-            lat.append(o["latency_ms"])
+            lat.append(sum(a["latency_ms"] or 0 for a in o["attempts"]))
             got = o["result"].get("label", "invalid") if o["valid"] else "invalid"
             bad += not o["valid"]
+            if o["valid"] and got == "funding":
+                funding_n += 1
+                for k, st in o["result"]["field_status"].items():
+                    fields[k + ":" + (st[0] if isinstance(st, list) and st else st).split(":")[0]] += 1
             kw_ok += classify(r["title"], r.get("summary") or None)["label"] == want
             if got == want:
                 tp[want] += 1
@@ -51,6 +56,8 @@ async def main():
             print(f"\r{i}/{len(rows)}", end="", flush=True)
     print(f"\n{model}: {len(rows)} events, accuracy {sum(tp.values()) / len(rows):.2f} (keyword filter {kw_ok / len(rows):.2f}), "
           f"rejected {bad}, median {statistics.median(lat) / 1000:.1f}s, p95 {sorted(lat)[int(len(lat) * .95) - 1] / 1000:.1f}s")
+    print(f"field grounding on {funding_n} funding events: " + ", ".join(f"{k} {v}" for k, v in sorted(fields.items())))
+    print("GATE (accuracy >= 0.95):", "PASS" if sum(tp.values()) / len(rows) >= 0.95 else "FAIL")
     for lab in ("funding", "rumour", "hiring", "none"):
         n = tp[lab] + fn[lab]
         p = f"{tp[lab] / (tp[lab] + fp[lab]):.2f}" if tp[lab] + fp[lab] else "n/a"

@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     llm_model: str = "qwen3.5-4b"
     llm_embed_model: str = "nomic-embed"
     auto_watch_cap: int = 200  # max companies the discovery loop may add to polling on its own
+    auto_board_cap: int = 300  # max active auto-registered ATS boards (a company can have several); enforced separately
     sec_contact_email: str = ""  # required by SEC EDGAR in the User-Agent
 
     @field_validator("database_url")

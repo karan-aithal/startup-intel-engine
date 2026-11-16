@@ -60,3 +60,14 @@ Alert Gmail address (dedicated or personal), Telegram bot token (Phase 2), final
 | 36 | Local model | `Qwen3.5-4B` Q4_K_M (lmstudio-community GGUF), CPU-only. Set `LLM_ENABLED=true` once the server is up. |
 | 37 | Embeddings | `nomic-embed-text-v1.5` GGUF (768 dims), pgvector HNSW. Funding news with cosine similarity >= 0.92 within 14 days is marked `duplicate_of`. |
 | 38 | Isolation | LLM work is its own queue kind (`llm_enrich`), one job at a time on its own worker loop. Alerts never wait for it. |
+
+Architecture revision plan (Phase 6 follow-ups, before Phase 7): see `docs/architecture-plan.md`.
+
+## Architecture revision decisions (2026-11-16)
+| # | Topic | Decision |
+|---|---|---|
+| 39 | Board cap | 300 active auto-registered ATS boards, enforced separately from the 200-company cap (`AUTO_BOARD_CAP`). Candidates are promoted when room exists: hot, then India-linked, then oldest. |
+| 40 | Duplicate alerts | Confirmed duplicates (same company and amount, or identical content from another source, same label) are linked in `event_relationships` and not re-alerted. A rumour then an announcement is a follow-up and both alert. Semantic matches only record a link. |
+| 41 | Grounding gate | 0.95 label accuracy on the gold set. Passed at 0.96. |
+| 42 | Claim staging | Regex and LLM extractions merge into `funding_round_claims`, `company_investor_claims`, `company_founder_claims` (status `unverified`). Authoritative tables are written only after Phase 7 verification. |
+| 43 | Outbox | At-least-once. A re-sent message after a crash is flagged "(resent)". |

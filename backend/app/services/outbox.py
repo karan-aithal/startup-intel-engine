@@ -1,5 +1,9 @@
 """Transactional outbox for notifications (alert_deliveries).
 
+Delivery contract: AT-LEAST-ONCE. (channel, dedup_key) is unique, so a retried event never queues a second alert.
+If a worker dies after Telegram accepted a message but before mark_sent, the lease expires and the row is sent again;
+that resend is flagged possible_duplicate and shown as "(resent)". Telegram has no idempotency key, so exactly-once is not claimed.
+
 Write the row in the same transaction as the fact that triggers the alert; a notification
 worker then claims and delivers it, retrying with backoff. No alert is lost on a crash.
 """
@@ -34,6 +38,7 @@ async def claim_pending(s: AsyncSession, *, channel: str = "telegram", limit: in
     res = await s.execute(
         text("""
         UPDATE alert_deliveries SET status = 'sending', attempts = attempts + 1,
+               possible_duplicate = possible_duplicate OR status = 'sending',  -- re-claimed after a crash: Telegram may already have it
                lease_expires_at = now() + make_interval(secs => :lease)
         WHERE id IN (
             SELECT id FROM alert_deliveries
@@ -41,7 +46,7 @@ async def claim_pending(s: AsyncSession, *, channel: str = "telegram", limit: in
                 (status IN ('pending','failed') AND next_attempt_at <= now())
                 OR (status = 'sending' AND lease_expires_at < now()))
             ORDER BY next_attempt_at FOR UPDATE SKIP LOCKED LIMIT :n)
-        RETURNING id, topic, payload, attempts, max_attempts
+        RETURNING id, topic, payload, attempts, max_attempts, possible_duplicate
         """),
         {"ch": channel, "lease": lease_s, "n": limit},
     )
