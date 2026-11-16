@@ -71,3 +71,4 @@ Architecture revision plan (Phase 6 follow-ups, before Phase 7): see `docs/archi
 | 41 | Grounding gate | 0.95 label accuracy on the gold set. Passed at 0.96. |
 | 42 | Claim staging | Regex and LLM extractions merge into `funding_round_claims`, `company_investor_claims`, `company_founder_claims` (status `unverified`). Authoritative tables are written only after Phase 7 verification. |
 | 43 | Outbox | At-least-once. A re-sent message after a crash is flagged "(resent)". |
+| 44 | Migrations | A pushed migration is never edited; fixes ship as a new idempotent revision (0005 renames the doubled check-constraint names from 0004). Migrations are verified with `scripts/migration_check.py` in a scratch schema, not by pytest, which builds its schema from the ORM. The script fails on drift, on constraint/index name mismatches, on changed real rows, and if `public` changes. |
