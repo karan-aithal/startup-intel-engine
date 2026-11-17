@@ -307,3 +307,73 @@ def india_metrics(rows: list[dict], label: str = "is_india_relevant") -> list[di
         out.append({"rule": name, "n": len(rows), "tp": tp, "fp": fp, "fn": fn, "tn": tn, "positives": tp + fn,
                     "precision": tp / (tp + fp) if tp + fp else None, "recall": tp / (tp + fn) if tp + fn else None, "wrong": wrong})
     return out
+
+
+# ---- funding classifier evaluation (Phase 12 step 2): offline, never changes the live classifier ----
+
+def classifier_labels() -> tuple[tuple[str, ...], tuple[str, ...]]:
+    c = cfg()["classifier_eval"]
+    return tuple(c["labels"]), tuple(c["negatives"])
+
+
+def candidate_classifier(name: str):
+    """A classify(title, content) with a candidate rule change applied, for offline comparison. The live prefilter is patched only for the
+    duration of each call and restored, so nothing outside the call sees the candidate. name 'current' is the live rules."""
+    import copy
+
+    from app.services import prefilter
+    cands = cfg()["classifier_eval"]["candidates"]
+    cand: dict = {}
+    for part in ([] if name == "current" else cands[name].get("combine", [name])):
+        for k, v in copy.deepcopy(cands[part]).items():
+            cand[k] = {**cand.get(k, {}), **v} if isinstance(v, dict) else cand.get(k, []) + v
+    live_cfg = prefilter._cfg
+    base = copy.deepcopy(live_cfg())
+    for key, where in (("verbs_add", base["funding"]["verbs"]["terms"]), ("stages_add", base["funding"]["stages"]["terms"]),
+                       ("investors_add", base["funding"]["investors"]["terms"]), ("not_funding_add", base["funding"]["not_funding"])):
+        where.extend(cand.get(key, []))
+
+    def classify(title, content=None) -> dict:
+        prefilter._cfg = lambda: base
+        try:
+            out = prefilter.classify(title, content)
+        finally:
+            prefilter._cfg = live_cfg
+        if out["label"] == "funding":
+            head = (title or "").lower()
+            for category, terms in cand.get("negative", {}).items():
+                if prefilter._hits(head, terms):
+                    return {**out, "label": "none", "negative": category}
+        return out
+
+    return classify
+
+
+def classifier_metrics(rows: list[dict], classify, label: str = "correct_label") -> dict:
+    """Confusion matrix and per-label precision/recall of `classify(title, content)` against labelled rows, weighted so the numbers
+    describe the whole pool (weight = stratum size / rows drawn from it). Rows labelled unsure or blank are skipped. Any label that is
+    not one the classifier can say (the negative categories) is scored as `none`, and a funding verdict on one is a false alarm with that cause."""
+    labels, negatives = classifier_labels()
+    valid = set(labels) | set(negatives)
+    done = [r for r in rows if r[label].strip().lower() in valid]
+    conf, raw, wrong = Counter(), Counter(), []
+    for r in done:
+        want, w = r[label].strip().lower(), float(r.get("weight") or 1)
+        out = classify(r["title"], r.get("content") or None)
+        got = out["label"]
+        conf[(want, got)] += w
+        raw[(want, got)] += 1
+        if (want if want in labels else "none") != got:
+            wrong.append({"want": want, "got": got, "title": r["title"][:90], "negative": out.get("negative"), "stratum": r.get("stratum", "")})
+    cls = lambda t: t if t in labels else "none"
+    res = {}
+    for lab in labels:
+        tp = sum(v for (t, g), v in conf.items() if cls(t) == lab and g == lab)
+        fp = sum(v for (t, g), v in conf.items() if cls(t) != lab and g == lab)
+        fn = sum(v for (t, g), v in conf.items() if cls(t) == lab and g != lab)
+        res[lab] = {"tp": tp, "fp": fp, "fn": fn, "support": tp + fn, "precision": tp / (tp + fp) if tp + fp else None, "recall": tp / (tp + fn) if tp + fn else None}
+    # wrongly flagged funding, by what the event really was; missed funding, by what the classifier said
+    fp_cause = {t: v for t in sorted({t for (t, g) in conf if g == "funding" and t != "funding"}) if (v := conf[(t, "funding")])}
+    fn_got = {g: v for g in sorted({g for (t, g) in conf if t == "funding" and g != "funding"}) if (v := conf[("funding", g)])}
+    return {"rows": len(done), "skipped": len(rows) - len(done), "labels": res, "conf": dict(conf), "raw": dict(raw), "fp_cause": fp_cause, "fn_got": fn_got, "wrong": wrong,
+            "funding_rows_in_unflagged": sum(n for (t, g), n in raw.items() if t == "funding" and g != "funding")}

@@ -106,7 +106,7 @@ Collected events stay as evidence references. After a source's `retention_days` 
 
 - Least-privilege database roles: separate read-only and backup roles from the owner role the app uses today (needs a one-time superuser step).
 - Deletion sync from sources that require it (none in use today).
-- Phase 12 (data correctness and measurement: feed timestamp fix, classifier and India evaluation, company identity report, feedback capture design): `docs/phase12-plan.md`; steps 1, 3, 4 and 5 are done or designed, step 2 waits for labels. Feedback capture: `docs/feedback-design.md`; rate alerts with `cd backend && uv run python ../scripts/feedback.py next` (5 a day), `add`, `undo`, `stats`.
+- Phase 12 (data correctness and measurement: feed timestamp fix, classifier and India evaluation, company identity report, feedback capture design): `docs/phase12-plan.md`; steps 1, 3, 4 and 5 are done or designed, step 2 is built and waits for your labels in `docs/classifier_labels.csv` (`cd backend && uv run python ../scripts/classifier_labels.py evaluate`). Feedback capture: `docs/feedback-design.md`; rate alerts with `cd backend && uv run python ../scripts/feedback.py next` (5 a day), `add`, `undo`, `stats`.
 - See `docs/decisions.md` rows 78 to 81 for the open Phase 11 proposals that need approval.
 
 ## Security

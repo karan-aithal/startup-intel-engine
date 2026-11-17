@@ -33,3 +33,30 @@ feedback:               # scripts/feedback.py (docs/feedback-design.md); nothing
   daily_budget: 5       # `next` hands out this many alerts a day to rate (the owner may raise it to 10 later)
   min_ratings: 30       # a precision is reported as a result only from this many drawn ratings per topic or source
   topics: [Global Funding, India Funding, Global Hiring, India Hiring]
+
+classifier_eval:        # scripts/classifier_labels.py and quality.classifier_metrics; offline only, the live classifier (config/keywords.yaml) is never changed by it
+  # What the live classifier can say. Every other label below means "not a startup funding alert" and is scored as `none`.
+  labels: [funding, rumour, hiring, spam, none]
+  negatives: [fund_close, debt_or_project_finance, sponsorship_or_naming, acquisition, grant, earnings_or_revenue, ipo_or_listing, layoffs_or_shutdown]
+  # An unflagged event that matches one of these is "an unflagged event with a funding cue" (sampling stratum C: where missed funding hides).
+  cue_regexes: ['[$€₹£]\s?\d', '\d[\d.,]*\s?(m|mn|million|b|bn|billion|cr|crore|lakh)\b', '\b(rais\w*|fund\w*|financ\w*|invest\w*|series [a-e]|seed|valuation|backed|led by|round|stealth|capital)\b']
+  sample: {flagged_funding: 70, flagged_other: 40, unflagged_cue: 70, unflagged_no_cue: 60, seed: 21}
+  # Candidate rule changes, run offline against the labels. NOTHING here is applied to alerts. `*_add` extends the live keyword lists;
+  # `negative` is the proposed "not startup funding" path: a title term that turns a funding verdict into a named non-funding one.
+  candidates:
+    more_verbs_and_stages:
+      verbs_add: [announces, financing, leads, backs, extends]
+      stages_add: [pre seed, seed funding, pre-series b]
+    rumour_phrases:
+      not_funding_add: [to raise, to kick off, explores]
+    not_startup_funding_negatives:
+      negative:
+        fund_close: [fund, first close, final close, closes on, vc firm]
+        debt_or_project_finance: [debt, loan, venture debt, credit facility, project finance, bond]
+        sponsorship_or_naming: [naming rights, sponsorship, title sponsor]
+        acquisition: [acquires, acquired by, to acquire, merger, majority stake]
+        grant: [grant, grants]
+        earnings_or_revenue: [revenue, profit, earnings, quarterly results]
+        ipo_or_listing: [ipo, files for, public offering, qip]
+        layoffs_or_shutdown: [layoffs, lays off, shuts down, shutting down]
+    all_three: {combine: [more_verbs_and_stages, rumour_phrases, not_startup_funding_negatives]}

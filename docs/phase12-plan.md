@@ -1,6 +1,6 @@
 # Phase 12 plan: data correctness and measurement first
 
-Status: step 1 done (fix and backfill applied 2026-11-17, ts-corrected baseline saved); step 3 done as a read-only report (merge map CSV awaiting the owner's approvals); step 4 sample drawn and preliminarily scored (awaiting the owner's labels and definition); step 5 built as route A (`scripts/feedback.py`, decision 86); step 2 not started. No new automated classification or ranking behaviour.
+Status: step 1 done (fix and backfill applied 2026-11-17, ts-corrected baseline saved); step 3 done as a read-only report (merge map CSV awaiting the owner's approvals); step 4 sample drawn and preliminarily scored (awaiting the owner's labels and definition); step 5 built as route A (`scripts/feedback.py`, decision 86); step 2 built (decision 88: 202-event labelled sample with preliminary labels, evaluation and offline candidate harness; awaiting the owner's labels). No new automated classification or ranking behaviour.
 Standing rules: LLM_ENABLED=false, EU-Startups disabled, AUTO_SOURCE_CAP=0, Jooble off, deletion ledger outside PostgreSQL and in every encrypted backup, dead `llm_enrich` jobs kept (87 today: 81 at the Phase 11 report, 6 more exhausted retries before the model was switched off), no commit or push without approval. The quality report stays read-only and `docs/quality/ranking_baseline-2026-11-17.json` is never edited.
 
 ## Order and dependencies
