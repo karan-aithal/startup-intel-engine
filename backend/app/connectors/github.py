@@ -80,7 +80,7 @@ class GithubAdapter(SourceAdapter):
                     continue
                 r.raise_for_status()
                 since = st.get("since", horizon)
-                fresh = [x for x in r.json() if not x.get("fork") and not x.get("archived") and (x.get("created_at") or "") > since]
+                fresh = [x for x in r.json() if not x.get("fork") and not x.get("archived") and not x["name"].startswith(".") and (x.get("created_at") or "") > since]
                 items += [{"repo": x, "org": o} for x in fresh]
                 if fresh:
                     st["since"] = max(x["created_at"] for x in fresh)

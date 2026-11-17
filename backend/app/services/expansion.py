@@ -4,6 +4,7 @@ ATS rule: recently funded, then verified funding, then India-linked, then the em
 
 GitHub is skipped here: its organisations are polled by the GitHub API route (sync_github_orgs), not as per-company Atom feeds."""
 import json
+import re
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,16 +50,25 @@ async def demote_sources(s: AsyncSession) -> int:
     return len(rows)
 
 
+def org_matches_company(org: str, company_canonical: str) -> bool:
+    """Discovery takes any GitHub link on a company's site as its organisation, but sites also link to partners and vendors (a site that
+    builds on Espressif chips links github.com/espressif). Credit an organisation's new repos to a company only when the org login
+    and the company name contain one another (letters and digits only, at least 4 characters)."""
+    a, b = (re.sub(r"[^a-z0-9]", "", x.lower()) for x in (org, company_canonical))
+    return len(a) >= 4 and len(b) >= 4 and (a in b or b in a)
+
+
 async def sync_github_orgs(s: AsyncSession) -> int:
     """Write the organisations to poll into the GitHub route's config (capped, best companies first). No-op until the route is registered."""
     ex = cfg()["expansion"]
-    rows = (await s.execute(text("""SELECT DISTINCT ON (c.id) c.id AS company_id, regexp_replace(cs.url, '^https://github.com/([^/.]+)\\.atom$', '\\1') AS org,
-            coalesce(c.hot_until > now(), false) AS hot, c.is_india_linked, c.emerging_global
+    rows = (await s.execute(text("""SELECT c.id AS company_id, regexp_replace(cs.url, '^https://github.com/([^/.]+)\\.atom$', '\\1') AS org,
+            coalesce(c.hot_until > now(), false) AS hot, c.is_india_linked, c.emerging_global, c.canonical_name
         FROM company_sources cs JOIN companies c ON c.id = cs.company_id
         WHERE cs.kind = 'github' AND cs.url ~ '^https://github.com/[^/.]+\\.atom$' AND NOT c.muted
           AND (c.watched OR coalesce(c.hot_until > now(), false) OR EXISTS (SELECT 1 FROM funding_rounds f WHERE f.company_id = c.id
                AND f.verification_status IN ('PARTIALLY_VERIFIED', 'VERIFIED')))
-        ORDER BY c.id, cs.created_at"""))).all()
+        ORDER BY cs.created_at"""))).all()
+    rows = [r for r in {r.org.lower(): r for r in rows if org_matches_company(r.org, r.canonical_name)}.values()]
     top = sorted(rows, key=lambda r: (not r.hot, not r.is_india_linked, -(r.emerging_global or 0), r.org))[: ex["github_orgs"]]
     orgs = [{"org": r.org, "company_id": str(r.company_id)} for r in top]
     res = await s.execute(text("UPDATE source_registry SET config = config || CAST(:c AS jsonb) WHERE name = :n AND connector_type = 'api'"),

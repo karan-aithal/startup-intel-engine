@@ -251,7 +251,7 @@ async def test_github_org_list_is_synced_into_the_route_config(sm):
 
 # ---------- GitHub connector ----------
 def repo(i, created, name="acme/tool", **kw):
-    return {"id": i, "full_name": name, "html_url": f"https://github.com/{name}", "description": "a tool", "created_at": created, "fork": False,
+    return {"id": i, "name": name.split("/")[1], "full_name": name, "html_url": f"https://github.com/{name}", "description": "a tool", "created_at": created, "fork": False,
             "archived": False, "homepage": "https://www.acme.com", "stargazers_count": 3, "language": "Python", **kw}
 
 
@@ -271,11 +271,12 @@ async def test_github_reports_only_new_original_repos_and_uses_etags():
         if req.headers.get("if-none-match") == '"v1"':
             return httpx.Response(304)
         return httpx.Response(200, headers={"etag": '"v1"'}, json=[repo(3, iso(1)), repo(2, iso(2), name="acme/fork", fork=True),
-                                                                   repo(1, iso(100), name="acme/old")])
+                                                                   repo(1, iso(100), name="acme/old"),
+                                                                   repo(4, iso(1), name="acme/.github")])  # the org profile repo is not a launch
 
     ad = GithubAdapter("GitHub Orgs", [{"org": "acme", "company_id": "c1"}], token="tok", client=gh_client(handler))
     r = await ad.fetch()
-    assert [x["repo"]["id"] for x in r.items] == [3]  # not the fork, not the 100-day-old repo (first-poll horizon is 30 days)
+    assert [x["repo"]["id"] for x in r.items] == [3]  # not the fork, the .github profile repo or the 100-day-old repo (first-poll horizon is 30 days)
     assert seen[0].headers["authorization"] == "Bearer tok" and seen[0].url.params["sort"] == "created" and ad.provider == "github"
     e = await ad.normalize(r.items[0])
     assert (e.event_type, e.source_event_id, e.title, e.company_domain) == ("repo", "repo:3", "acme/tool", "acme.com")
@@ -382,3 +383,16 @@ async def test_repo_events_are_stored_and_correlated_but_never_alerted(sm):
         await correlate_company(s, str(cid), now())
         sig = (await s.execute(text("SELECT signal_type, data FROM company_signals"))).one()
         assert sig.signal_type == "new_repo" and sig.data["repos"] == 1
+
+
+async def test_github_org_must_resemble_the_company_before_its_repos_are_credited_to_it(sm):
+    assert expansion.org_matches_company("daisytuner", "daisytuner") and expansion.org_matches_company("esp-mosaico", "mosaico")
+    assert expansion.org_matches_company("acme-inc", "Acme") and not expansion.org_matches_company("espressif", "mosaico")
+    assert not expansion.org_matches_company("ab", "ab")  # too short to mean anything
+    async with sm() as s:
+        await register_source(s, expansion.GITHUB_ROUTE, "api", config={"kind": "github", "orgs": []})
+        c = await company_feed(s, "mosaico", hot=True, kind="github", url="https://github.com/espressif.atom")  # a partner the site links to
+        await s.execute(text("INSERT INTO company_sources (company_id, kind, url, status) VALUES (:c, 'github', 'https://github.com/esp-mosaico.atom', 'discovered')"), {"c": c})
+        assert await expansion.sync_github_orgs(s) == 1
+        cfg = (await s.execute(text("SELECT config FROM source_registry WHERE name = :n"), {"n": expansion.GITHUB_ROUTE})).scalar_one()
+    assert cfg["orgs"] == [{"org": "esp-mosaico", "company_id": c}]  # the company's own org, not the partner's
