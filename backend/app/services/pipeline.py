@@ -38,7 +38,10 @@ async def process_event(s: AsyncSession, event_id: str) -> str:
     elif ev["event_type"] == "job":
         c = {"label": "hiring", "amount": None}
     elif ev["event_type"] == "repo":  # GitHub launch signal: stored and correlated, never alerted (a repo blurb must not match funding/hiring keywords)
-        c = {"label": "none", "amount": None}
+        # 'ignored' = kept for audit but not a launch (an organisation's .github profile repo, or marked by hand with raw_metadata.ignored_reason).
+        # Decided here, not only at ingest, so a retried job can never turn an ignored event back into a counted one.
+        ignored = (ev["raw_metadata"] or {}).get("ignored_reason") or (ev["title"] or "").rsplit("/", 1)[-1].startswith(".")
+        c = {"label": "ignored" if ignored else "none", "amount": None}
     else:
         c = classify(ev["title"], ev["content"])
     label = c["label"]
