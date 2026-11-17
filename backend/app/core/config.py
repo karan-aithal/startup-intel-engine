@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     api_host: str = "127.0.0.1"
     api_port: int = Field(8000, ge=1, le=65535)
-    cors_origins: str = "http://127.0.0.1:3000,http://localhost:3000"
+    cors_origins: str = "http://127.0.0.1:3010,http://localhost:3010,http://127.0.0.1:3000,http://localhost:3000"
     database_url: str  # postgresql+asyncpg://user:pass@127.0.0.1:5432/startup_intel
     display_timezone: str = "Asia/Kolkata"
     telegram_bot_token: str = ""  # empty = alerts print to the console instead
@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     github_token: str = ""  # optional: 5,000 requests/hour instead of 60 (a fine-grained token with no permissions is enough for public repos)
     jooble_api_key: str = ""  # per-country key from jooble.org/api/about; the route also needs terms_confirmed in sources.yaml
     jooble_base_url: str = "https://jooble.org/api"  # each Jooble country has its own domain: confirm yours before enabling
+    deletion_ledger: str = "~/.config/startup-intel/deletions.jsonl"  # append-only, outside the database: see services/retention.py
+    backup_dir: str = "~/backups/startup-intel"  # where scripts/backup.sh writes; the watchdog alerts when it goes stale
     sec_contact_email: str = ""  # required by SEC EDGAR in the User-Agent
 
     @field_validator("database_url")

@@ -1,0 +1,19 @@
+# These rules show in the Prometheus UI (127.0.0.1:9191/alerts) and Grafana. There is no Alertmanager: notifications come from
+# the watchdog (backend/app/watchdog.py -> Telegram "Ops" topic), which checks the same conditions straight from the database.
+groups:
+  - name: startup-intel
+    rules:
+      - alert: ApiDown
+        expr: up{job="startup-intel"} == 0
+        for: 2m
+      - alert: WorkerHeartbeatStale
+        expr: worker_heartbeat_age_seconds > 180
+        for: 1m
+      - alert: SourceUnavailable
+        expr: source_health{state="UNAVAILABLE"} > 0
+        for: 10m
+      - alert: SourceStale
+        expr: time() - source_last_success_timestamp > 6 * 3600
+        for: 10m
+      - alert: AlertDeliveryFailing
+        expr: increase(telegram_delivery_failures_total[1h]) > 0

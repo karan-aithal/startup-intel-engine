@@ -16,9 +16,9 @@ from app.connectors.bluesky import stream_forever
 from app.connectors.factory import build_adapter
 from app.connectors.runner import run_once
 from app.core.config import get_settings
-from app.core.logging import setup_logging
+from app.core.logging import env_file_warning, setup_logging
 from app.db.session import get_engine, get_sessionmaker
-from app.services import ats, companies, queue
+from app.services import ats, companies, ops, queue, retention
 from app.services.correlate import correlate_all
 from app.services.discovery import discover_pending
 from app.services.expansion import demote_sources, expand_sources, sync_github_orgs
@@ -117,6 +117,7 @@ async def maintenance(sm, cfg) -> None:
         await ats.demote_stale(s)
         await ats.promote_candidates(s, cfg.auto_watch_cap, cfg.auto_board_cap)
         await ats.refresh_hot_polling(s)
+        log.info("retention", **await retention.purge(s))
         row = (await s.execute(text("""SELECT r.id, r.enabled, (SELECT max(started_at) FROM source_runs WHERE source_id = r.id) AS last
             FROM source_registry r WHERE r.name = 'Common Crawl ATS' AND r.connector_type = 'discovery'"""))).first()
         await s.commit()
@@ -155,6 +156,8 @@ async def main() -> None:
             await s.commit()
 
     log.info("worker_start", worker=WORKER, sink=type(sink).__name__)
+    if msg := env_file_warning():
+        log.warning("env_permissions", detail=msg)
     try:
         await _run(sm, sink, cfg, beat)
     finally:
@@ -182,6 +185,7 @@ async def _run(sm, sink, cfg, beat):
         *([_loop("llm", lambda: llm_jobs(sm, cfg), 3)] if cfg.llm_enabled else []),
         _loop("maintenance", lambda: maintenance(sm, cfg), 3600),
         _loop("verification", lambda: verification(sm), 300),
+        _loop("watch", lambda: ops.watch(sm, cfg), 300),
         *(stream_forever(sm, n, c) for n, c in await _streams(sm)),
     )
 

@@ -1,7 +1,7 @@
 """RSS/Atom feed connector with conditional requests (ETag / If-Modified-Since)."""
+import calendar
 import hashlib
 from datetime import UTC, datetime
-from time import mktime
 
 import feedparser
 import httpx
@@ -47,12 +47,14 @@ class FeedAdapter(SourceAdapter):
         if not (link or title):
             return None
         pub = item.get("published_parsed") or item.get("updated_parsed")
-        published = datetime.fromtimestamp(mktime(pub), UTC) if pub else None
+        # feedparser returns a UTC time tuple. calendar.timegm reads it as UTC; time.mktime read it as LOCAL time, which stored every
+        # published_at 5.5 h early on this IST host (found in Phase 11). ts_fixed marks events written with the correct conversion.
+        published = datetime.fromtimestamp(calendar.timegm(pub), UTC) if pub else None
         eid = item.get("id") or link or hashlib.sha256((title or "").encode()).hexdigest()
         return NormalizedEvent(
             source_name=self.name, source_event_id=eid, source_url=link, canonical_url=link,
             event_type="article", title=title, content=item.get("summary"), published_at=published,
-            raw_metadata={"region": self.region, "tags": [t.get("term") for t in item.get("tags", [])][:10]},
+            raw_metadata={"region": self.region, "tags": [t.get("term") for t in item.get("tags", [])][:10], "ts_fixed": True},
             permissions_metadata={"store": "title, summary and link only"},
         )
 
