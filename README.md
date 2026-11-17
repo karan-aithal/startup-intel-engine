@@ -10,7 +10,7 @@ The full specification is in [PROMPT.md](PROMPT.md). Decisions made so far are i
 |---|---|---|
 | 0 | Discovery and foundation | Done |
 | 1 | Core data model, source registry, queue | Done |
-| 2 | First vertical slice with real alerts (feeds, press wires, Hacker News, SEC Form D, Greenhouse/Lever/Ashby, Telegram, gold-set benchmark) | Next, waiting for go |
+| 2 | First vertical slice with real alerts (feeds, press wires, Hacker News, SEC Form D, Greenhouse/Lever/Ashby, Telegram, gold-set benchmark) | Done |
 | 3 | Inbox-as-API (IMAP) and share-to-bot | Planned |
 | 4 | Public-page pollers and feed auto-discovery | Planned |
 | 5 | Company, founder and ATS discovery loop | Planned |
