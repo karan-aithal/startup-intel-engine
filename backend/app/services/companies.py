@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors.feed import USER_AGENT
+from app.services.quality import cfg as quality_cfg
 
 SUFFIX = re.compile(r"\b(inc|ltd|llc|pvt|private|limited|corp|co|technologies|technology|labs?)\b\.?", re.I)
 NAME_VERB = re.compile(
@@ -69,8 +70,8 @@ async def match_company(s: AsyncSession, name: str) -> tuple[str | None, int]:
         ORDER BY 2 DESC LIMIT 1"""), {"c": c})).first()
     if r:
         return str(r.id), r.conf
-    r = (await s.execute(text("""SELECT id, round(similarity(canonical_name, :c) * 100)::int AS conf FROM companies
-        WHERE similarity(canonical_name, :c) >= 0.85 ORDER BY 2 DESC LIMIT 1"""), {"c": c})).first()
+    r = (await s.execute(text("""SELECT id, round(similarity(canonical_name, :s) * 100)::int AS conf FROM companies
+        WHERE similarity(canonical_name, :s) >= :sim ORDER BY 2 DESC LIMIT 1"""), {"s": c, "sim": quality_cfg()["entity_resolution"]["similarity"]})).first()
     return (str(r.id), r.conf) if r else (None, 0)
 
 

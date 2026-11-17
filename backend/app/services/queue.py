@@ -5,6 +5,8 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.logging import redact
+
 BACKOFF_BASE_S = 15
 BACKOFF_CAP_S = 3600
 
@@ -102,7 +104,7 @@ async def fail(s: AsyncSession, job_id: str, worker: str, error: str) -> str | N
                 run_at = now() + make_interval(secs => :delay),
                 finished_at = CASE WHEN :dead THEN now() END
                 WHERE id = :id"""),
-        {"st": "dead" if dead else "pending", "err": error[:2000], "delay": backoff_seconds(attempts),
+        {"st": "dead" if dead else "pending", "err": redact(error)[:2000], "delay": backoff_seconds(attempts),
          "dead": dead, "id": job_id},
     )
     return "dead" if dead else "pending"

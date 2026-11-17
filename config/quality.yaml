@@ -1,0 +1,35 @@
+# Phase 11 thresholds. The first two were hard-coded; the values below are exactly what the code used, so behaviour is unchanged.
+# Changing either one changes which events merge: re-run scripts/quality_report.py before and after (see docs/quality/).
+
+entity_resolution:
+  similarity: 0.85      # companies.match_company: trigram similarity at or above this is the same company
+
+dedup:
+  window_days: 7        # dedup.match_logical: the same event reported by two sources within this many days is one event
+
+duplicate_audit:        # scripts/quality_report.py only; these never affect what the pipeline does
+  company_similarity: 0.6   # two company rows this similar are reported as possible duplicates (looser than the merge rule)
+                            # (two companies cannot share a domain: company_domains.domain is unique)
+  company_word_similarity: 0.8  # ...or one name sits inside the other (a description left in the name)
+  round_window_days: 14     # two rounds of one company this close, with compatible stage and amount, count as one
+  alert_window_days: 7      # two funding alerts for the same company and amount this close count as a repeat
+  target_rate: 0.05         # Phase 11 goal: each duplicate rate below 5 percent
+
+identity:               # scripts/quality_report.py company identity section; report-only, never changes data
+  # A name containing one of these words has a description in it ("French robot maker Genesis"). Matched on the canonical form
+  # (lower case, punctuation became spaces), so "Denmark's" is the words "denmark" and "s". Ordinary brand words stay out
+  # ("ai", "robotics", "labs"), or "Genesis AI" and "Remedy Robotics" would be flagged.
+  descriptor_words: [french, german, danish, swedish, finnish, norwegian, dutch, british, indian, chinese, japanese, korean, israeli,
+                     singaporean, canadian, australian, spanish, italian, swiss, irish, european, african, american, nigerian, kenyan,
+                     brazilian, mexican, lankan, sri, denmark, france, germany, sweden, finland, norway, uk, us, s,
+                     maker, makers, backer, backers, firm, firms, alums, alumni, startup, startups, platform, company, unicorn, giant,
+                     vc, native, profitable, robot, crm, insurtech, fintech, edtech, healthtech, proptech, saas]
+  institution_words: [capital, ventures, partners, fund, funds, university, institute, college, foundation, accelerator, incubator, pilani, iit, iim, bits]
+  headline_verbs: [triples, doubles, quadruples, grows, hits, crosses, launches, acquires, hires, appoints, secures, raises]
+  approx_fx: {INR: 88.0, EUR: 0.92, GBP: 0.78}   # units per US dollar, rough: used only to notice the same round reported in two currencies
+  fx_tolerance: 0.10    # cross-currency amounts within this fraction count as the same (the rates above are approximate)
+
+feedback:               # scripts/feedback.py (docs/feedback-design.md); nothing here affects alerts, scoring or ranking
+  daily_budget: 5       # `next` hands out this many alerts a day to rate (the owner may raise it to 10 later)
+  min_ratings: 30       # a precision is reported as a result only from this many drawn ratings per topic or source
+  topics: [Global Funding, India Funding, Global Hiring, India Hiring]

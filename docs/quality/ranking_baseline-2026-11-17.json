@@ -1,0 +1,406 @@
+{
+ "global": [
+  {
+   "id": "2aff589a-31a6-4325-b9f1-31ce7c552b5d",
+   "company": "Genesis AI",
+   "stage": "series a",
+   "status": "VERIFIED",
+   "score_global": 96,
+   "score_india": 77
+  },
+  {
+   "id": "11580c8d-7f77-42af-8928-d463e7d68999",
+   "company": "Bharat Semi",
+   "stage": "seed",
+   "status": "VERIFIED",
+   "score_global": 90,
+   "score_india": 92
+  },
+  {
+   "id": "42595d5b-99b2-4411-8cb2-c83f8fd57896",
+   "company": "Shree Anandhaas",
+   "stage": "series a",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 85,
+   "score_india": 86
+  },
+  {
+   "id": "182cfac8-e946-4b68-80c2-271e7df141d2",
+   "company": "Fermat",
+   "stage": "seed",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 81,
+   "score_india": 63
+  },
+  {
+   "id": "2f7a48b8-95dd-43f9-8c6c-3edb6f19517b",
+   "company": "Profitable French InsurTech Previsia",
+   "stage": "seed",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 81,
+   "score_india": 63
+  },
+  {
+   "id": "db3e2822-63a6-49cf-b617-0d912e69c6a5",
+   "company": "Denmark\u2019s Commit Biologics",
+   "stage": "seed",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 81,
+   "score_india": 63
+  },
+  {
+   "id": "e5028a9c-a796-4161-be5c-e0c1f7ea67b9",
+   "company": "AstraNu",
+   "stage": "seed",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 81,
+   "score_india": 63
+  },
+  {
+   "id": "0bf38380-700a-4d57-881d-9aaf0ad0097f",
+   "company": "Alecto",
+   "stage": "seed",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 80,
+   "score_india": 62
+  },
+  {
+   "id": "2d4f1db3-2f33-49bd-aec8-2e7ae58959b7",
+   "company": "Valeria",
+   "stage": "seed",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 79,
+   "score_india": 61
+  },
+  {
+   "id": "4fa86d7b-5d89-47bd-b36b-c46afe82a26b",
+   "company": "Daisytuner",
+   "stage": "seed",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 79,
+   "score_india": 61
+  },
+  {
+   "id": "682ad493-4479-477b-8d7e-615d26f7f852",
+   "company": "Mirendil",
+   "stage": "series a",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 78,
+   "score_india": 61
+  },
+  {
+   "id": "cac2545d-0d28-464f-af17-b9830772bf8b",
+   "company": "Tristar AI",
+   "stage": "series a",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 78,
+   "score_india": 60
+  },
+  {
+   "id": "fa123941-8e38-4adc-a139-868de3982757",
+   "company": "Athlete To Athlete",
+   "stage": "series a",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 78,
+   "score_india": 60
+  },
+  {
+   "id": "e1b638db-5a7a-47a8-9ac6-a0f7aa1714a7",
+   "company": "Remedy Robotics",
+   "stage": "series b",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 76,
+   "score_india": 59
+  },
+  {
+   "id": "f2e891ad-0d0b-4d06-a95b-3aa0e35f6efb",
+   "company": "Dreamteam",
+   "stage": null,
+   "status": "VERIFIED",
+   "score_global": 76,
+   "score_india": 81
+  },
+  {
+   "id": "69420bef-4e9d-4202-834b-91c10b3e11ee",
+   "company": "Pro Climbing League",
+   "stage": "seed",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 75,
+   "score_india": 58
+  },
+  {
+   "id": "bec8335d-4ecb-45de-9d61-dcf08d1e3687",
+   "company": "Stark Future",
+   "stage": null,
+   "status": "VERIFIED",
+   "score_global": 75,
+   "score_india": 60
+  },
+  {
+   "id": "6d3ded5a-a183-4b79-a401-a737e9a0a1a2",
+   "company": "Lemonpeel",
+   "stage": "pre-seed",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 74,
+   "score_india": 77
+  },
+  {
+   "id": "d45ede38-433e-4fd4-979a-8765feb8de70",
+   "company": "Mulga",
+   "stage": "pre-seed",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 74,
+   "score_india": 57
+  },
+  {
+   "id": "1839f31b-426a-4646-9b20-65abd4e45314",
+   "company": "Treat",
+   "stage": "pre-seed",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 73,
+   "score_india": 57
+  },
+  {
+   "id": "3b711394-0664-4da9-a0ae-a548859628da",
+   "company": "JohnAIC",
+   "stage": "pre-seed",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 73,
+   "score_india": 77
+  },
+  {
+   "id": "b7d8fa56-43de-40cc-8a6f-10eeb6308802",
+   "company": "Palomma",
+   "stage": "series a",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 72,
+   "score_india": 55
+  },
+  {
+   "id": "ef913825-db17-4ff7-b2c8-8fd1427b5cde",
+   "company": "Baaz Bikes",
+   "stage": "series b",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 71,
+   "score_india": 75
+  },
+  {
+   "id": "0a94b86b-d472-4d50-ba4c-ed17653e1cfd",
+   "company": "Greenjoules",
+   "stage": "series b",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 69,
+   "score_india": 73
+  },
+  {
+   "id": "a3f0953b-06e4-445b-9eba-5b3162b3bc24",
+   "company": "Cosmoserve Space",
+   "stage": "seed",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 69,
+   "score_india": 73
+  }
+ ],
+ "india": [
+  {
+   "id": "11580c8d-7f77-42af-8928-d463e7d68999",
+   "company": "Bharat Semi",
+   "stage": "seed",
+   "status": "VERIFIED",
+   "score_global": 90,
+   "score_india": 92
+  },
+  {
+   "id": "42595d5b-99b2-4411-8cb2-c83f8fd57896",
+   "company": "Shree Anandhaas",
+   "stage": "series a",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 85,
+   "score_india": 86
+  },
+  {
+   "id": "f2e891ad-0d0b-4d06-a95b-3aa0e35f6efb",
+   "company": "Dreamteam",
+   "stage": null,
+   "status": "VERIFIED",
+   "score_global": 76,
+   "score_india": 81
+  },
+  {
+   "id": "2aff589a-31a6-4325-b9f1-31ce7c552b5d",
+   "company": "Genesis AI",
+   "stage": "series a",
+   "status": "VERIFIED",
+   "score_global": 96,
+   "score_india": 77
+  },
+  {
+   "id": "3b711394-0664-4da9-a0ae-a548859628da",
+   "company": "JohnAIC",
+   "stage": "pre-seed",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 73,
+   "score_india": 77
+  },
+  {
+   "id": "6d3ded5a-a183-4b79-a401-a737e9a0a1a2",
+   "company": "Lemonpeel",
+   "stage": "pre-seed",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 74,
+   "score_india": 77
+  },
+  {
+   "id": "ef913825-db17-4ff7-b2c8-8fd1427b5cde",
+   "company": "Baaz Bikes",
+   "stage": "series b",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 71,
+   "score_india": 75
+  },
+  {
+   "id": "0a94b86b-d472-4d50-ba4c-ed17653e1cfd",
+   "company": "Greenjoules",
+   "stage": "series b",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 69,
+   "score_india": 73
+  },
+  {
+   "id": "a3f0953b-06e4-445b-9eba-5b3162b3bc24",
+   "company": "Cosmoserve Space",
+   "stage": "seed",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 69,
+   "score_india": 73
+  },
+  {
+   "id": "7f1b890b-16af-4034-8e5f-83f3e51e6dea",
+   "company": "Daksham Growth Ventures",
+   "stage": "pre-series a",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 67,
+   "score_india": 71
+  },
+  {
+   "id": "e3e5ae6b-558a-4317-aabe-4251071c9062",
+   "company": "Redbrick Offices",
+   "stage": null,
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 66,
+   "score_india": 71
+  },
+  {
+   "id": "c12f32a4-9171-4291-a738-c6321a9ae97f",
+   "company": "Olyv",
+   "stage": null,
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 65,
+   "score_india": 70
+  },
+  {
+   "id": "003b083e-497e-4165-8d54-37bbc0b959d8",
+   "company": "Olyv",
+   "stage": "series c",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 61,
+   "score_india": 67
+  },
+  {
+   "id": "f3ba610e-71eb-40d5-bc58-46bc46cbd1a1",
+   "company": "Venomics AI",
+   "stage": "pre-seed",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 61,
+   "score_india": 67
+  },
+  {
+   "id": "3b65fba1-fdda-423e-89b8-c3c6b5994a57",
+   "company": "Kutlerri.ai",
+   "stage": null,
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 60,
+   "score_india": 66
+  },
+  {
+   "id": "9e899e73-8974-4fd7-86a1-6f51b61915c6",
+   "company": "Desible.ai",
+   "stage": null,
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 60,
+   "score_india": 66
+  },
+  {
+   "id": "5473ea45-a605-474c-bc12-df76f872871a",
+   "company": "Canonicus Capital",
+   "stage": null,
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 59,
+   "score_india": 65
+  },
+  {
+   "id": "8a60ddea-8431-4ebf-b216-622ab46569a4",
+   "company": "Hundo Pizza",
+   "stage": null,
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 59,
+   "score_india": 65
+  },
+  {
+   "id": "182cfac8-e946-4b68-80c2-271e7df141d2",
+   "company": "Fermat",
+   "stage": "seed",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 81,
+   "score_india": 63
+  },
+  {
+   "id": "2f7a48b8-95dd-43f9-8c6c-3edb6f19517b",
+   "company": "Profitable French InsurTech Previsia",
+   "stage": "seed",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 81,
+   "score_india": 63
+  },
+  {
+   "id": "db3e2822-63a6-49cf-b617-0d912e69c6a5",
+   "company": "Denmark\u2019s Commit Biologics",
+   "stage": "seed",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 81,
+   "score_india": 63
+  },
+  {
+   "id": "e5028a9c-a796-4161-be5c-e0c1f7ea67b9",
+   "company": "AstraNu",
+   "stage": "seed",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 81,
+   "score_india": 63
+  },
+  {
+   "id": "0bf38380-700a-4d57-881d-9aaf0ad0097f",
+   "company": "Alecto",
+   "stage": "seed",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 80,
+   "score_india": 62
+  },
+  {
+   "id": "2d4f1db3-2f33-49bd-aec8-2e7ae58959b7",
+   "company": "Valeria",
+   "stage": "seed",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 79,
+   "score_india": 61
+  },
+  {
+   "id": "4fa86d7b-5d89-47bd-b36b-c46afe82a26b",
+   "company": "Daisytuner",
+   "stage": "seed",
+   "status": "PARTIALLY_VERIFIED",
+   "score_global": 79,
+   "score_india": 61
+  }
+ ]
+}

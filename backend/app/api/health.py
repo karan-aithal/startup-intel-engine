@@ -1,8 +1,10 @@
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Response
+from fastapi.responses import PlainTextResponse
 
-from app.db.session import check_db
+from app.db.session import check_db, get_sessionmaker
+from app.services import ops
 
 router = APIRouter(prefix="/health", tags=["health"])
 
@@ -27,3 +29,13 @@ async def ready(response: Response) -> dict:
         "status": "ok" if ok else "degraded",
         "database": {"ok": True, **db, "missing_extensions": sorted(missing)},
     }
+
+
+# Not under /health so Prometheus gets the conventional path. Read-only; the API only listens on 127.0.0.1.
+metrics_router = APIRouter()
+
+
+@metrics_router.get("/metrics", response_class=PlainTextResponse)
+async def metrics() -> str:
+    async with get_sessionmaker()() as s:
+        return await ops.metrics_text(s)

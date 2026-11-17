@@ -13,6 +13,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.logging import redact
 from app.services.queue import backoff_seconds
 
 
@@ -67,6 +68,6 @@ async def mark_failed(s: AsyncSession, delivery_id: str, error: str) -> str:
     await s.execute(
         text("""UPDATE alert_deliveries SET status = :st, last_error = :e, lease_expires_at = NULL,
                 next_attempt_at = now() + make_interval(secs => :d) WHERE id = :id"""),
-        {"st": "dead" if dead else "failed", "e": error[:2000], "d": backoff_seconds(row.attempts), "id": delivery_id},
+        {"st": "dead" if dead else "failed", "e": redact(error)[:2000], "d": backoff_seconds(row.attempts), "id": delivery_id},
     )
     return "dead" if dead else "failed"

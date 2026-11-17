@@ -10,8 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.claims import _same_amount, regex_claim
 from app.services.companies import canonical
-
-WINDOW_DAYS = 7
+from app.services.quality import cfg as quality_cfg
 
 
 def _named_in(name: str | None, title: str | None) -> bool:
@@ -38,7 +37,7 @@ async def match_logical(s: AsyncSession, event_id: str, label: str) -> bool:
     if ev.content_hash:
         r = (await s.execute(text("""SELECT id, processing_status FROM source_events WHERE content_hash = :h AND id <> :i
             AND processing_status IN ('funding', 'rumour') AND source_id <> :s AND {nd} AND detected_at BETWEEN CAST(:d AS timestamptz) - make_interval(days => :w) AND CAST(:d AS timestamptz) + make_interval(days => :w)
-            ORDER BY detected_at LIMIT 1""".replace("{nd}", not_dependent)), {"h": ev.content_hash, "i": event_id, "s": ev.source_id, "d": ev.detected_at, "w": WINDOW_DAYS})).first()
+            ORDER BY detected_at LIMIT 1""".replace("{nd}", not_dependent)), {"h": ev.content_hash, "i": event_id, "s": ev.source_id, "d": ev.detected_at, "w": quality_cfg()["dedup"]["window_days"]})).first()
         if r:
             found = (r.id, r.processing_status, "syndicated_copy")
     if not found and not alerted:  # an event that already alerted is its group's primary: a retry must not make it a duplicate
@@ -49,7 +48,7 @@ async def match_logical(s: AsyncSession, event_id: str, label: str) -> bool:
             rows = (await s.execute(text("""SELECT id, title, content, processing_status FROM source_events
                 WHERE id <> :i AND processing_status IN ('funding', 'rumour') AND {nd}
                 AND detected_at BETWEEN CAST(:d AS timestamptz) - make_interval(days => :w) AND CAST(:d AS timestamptz) + make_interval(days => :w) ORDER BY detected_at""".replace("{nd}", not_dependent)),
-                {"i": event_id, "d": ev.detected_at, "w": WINDOW_DAYS})).all()
+                {"i": event_id, "d": ev.detected_at, "w": quality_cfg()["dedup"]["window_days"]})).all()
             for r in rows:
                 other = regex_claim(r.title, r.content)
                 same_ccy = other["currency"] in (None, mine["currency"]) or mine["currency"] is None

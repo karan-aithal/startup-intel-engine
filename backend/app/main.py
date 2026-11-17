@@ -26,4 +26,5 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(dashboard.router)
 app.include_router(intel.router)
+app.include_router(health.metrics_router)
 app.include_router(watchlist.router)

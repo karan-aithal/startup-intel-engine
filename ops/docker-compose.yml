@@ -1,0 +1,38 @@
+# Prometheus + Grafana for this project. Run: docker compose -f ops/docker-compose.yml up -d   (scripts/ops.sh wraps it)
+# Host networking so Prometheus can scrape the API on 127.0.0.1:8000; both listen on 127.0.0.1 only (never 0.0.0.0).
+# Ports differ from other projects' Prometheus (9090), Grafana (3001) and Alertmanager (9093). Images are pinned and reused if present locally.
+name: startup-intel-ops
+services:
+  prometheus:
+    image: prom/prometheus:v2.49.1
+    network_mode: host
+    restart: unless-stopped
+    mem_limit: 400m
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.listen-address=127.0.0.1:9191
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+  grafana:
+    image: grafana/grafana:10.2.3
+    network_mode: host
+    restart: unless-stopped
+    mem_limit: 400m
+    environment:
+      GF_SERVER_HTTP_ADDR: 127.0.0.1
+      GF_SERVER_HTTP_PORT: "3002"
+      # No password to manage: viewers only, no login form. Dashboards are provisioned from files, so edit them in ops/grafana.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+volumes:
+  prometheus-data:

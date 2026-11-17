@@ -11,14 +11,14 @@ The full specification is in [PROMPT.md](PROMPT.md). Decisions made so far are i
 | 0 | Discovery and foundation | Done |
 | 1 | Core data model, source registry, queue | Done |
 | 2 | First vertical slice with real alerts (feeds, press wires, Hacker News, SEC Form D, Greenhouse/Lever/Ashby, Telegram, gold-set benchmark) | Done |
-| 3 | Inbox-as-API (IMAP) and share-to-bot | Planned |
-| 4 | Public-page pollers and feed auto-discovery | Planned |
-| 5 | Company, founder and ATS discovery loop | Planned |
-| 6 | Local AI (Ollama) | Planned |
-| 7 | Verification, correlation, scoring | Planned |
-| 8 | Adaptive acquisition and optional connectors | Planned |
-| 9 | Dashboard | Planned |
-| 10 | Observability, security, backup | Planned |
+| 3 | Inbox-as-API (IMAP) and share-to-bot | Done |
+| 4 | Public-page pollers and feed auto-discovery | Done |
+| 5 | Company, founder and ATS discovery loop | Done |
+| 6 | Local AI (llama-server) | Done |
+| 7 | Verification, correlation, scoring | Done |
+| 8 | Adaptive acquisition and optional connectors | Done |
+| 9 | Dashboard | Done |
+| 10 | Observability, security, backup | Built, awaiting acceptance |
 | 11 | Quality tuning | Planned |
 | 12 | Optional and approval-dependent connectors (off by default) | Planned |
 
@@ -29,7 +29,7 @@ The work goes one phase at a time. Each phase ends with a report and waits for a
 - Backend: Python 3.12 (via `uv`), FastAPI, SQLAlchemy 2 (async), Alembic
 - Database: PostgreSQL (14 on this box; any version with pgvector) on 127.0.0.1:5432 with `pg_trgm` and pgvector
 - Frontend: Next.js, TypeScript, SCSS
-- Ports: API 8000, dashboard 3000, both bound to localhost only
+- Ports: API 8000, dashboard 3010, both bound to localhost only
 
 ## Layout
 
@@ -53,7 +53,7 @@ cd backend && uv run alembic upgrade head
 ## Run
 
 ```bash
-./scripts/run.sh              # backend on :8000, frontend on :3000, Ctrl+C stops both
+./scripts/run.sh              # backend on :8000, frontend on :3010, Ctrl+C stops both
 cd backend && uv run python ../scripts/seed_sources.py --enable   # register approved sources (SEC stays off until SEC_CONTACT_EMAIL is set)
 cd backend && uv run python -m app.worker   # collect, classify, deliver alerts (console until TELEGRAM_* is set)
 cd backend && uv run python ../scripts/gold_report.py   # precision/recall once docs/gold_set_candidates.csv is labelled
@@ -68,9 +68,50 @@ unset PYTHONPATH              # ROS on this machine leaks system packages into t
 uv run python -m pytest       # runs in a throwaway schema, your real database is untouched
 ```
 
-## Backups
+## Operations (Phase 10)
 
-`scripts/backup.sh` and `scripts/restore.sh` use `~/backups/startup-intel`. The plan is a daily run at 20:00 IST, keeping 7 daily and 4 weekly copies.
+Everything here listens on 127.0.0.1 only.
+
+| What | Where |
+|---|---|
+| Metrics (Prometheus text, computed from the database, so restarts lose nothing) | `http://127.0.0.1:8000/metrics` |
+| Prometheus and Grafana (dashboard "Startup Intelligence: operations", read-only, no login) | `docker compose -f ops/docker-compose.yml up -d`, then `127.0.0.1:9191` and `127.0.0.1:3002` |
+| Failure alerts to the Telegram "Ops" topic (console if Telegram is not set up) | worker loop every 5 min, plus `backend` `python -m app.watchdog` from cron |
+| Scheduled jobs: backup 20:00 IST, restore test Sunday, watchdog, log rotation | `scripts/install_cron.sh` (re-run safe, `--remove` undoes it) |
+| One-shot health check (API, database, metrics, worker heartbeat, frontend) | `scripts/health_check.sh` |
+
+The watchdog alerts, once per episode, for: a source that failed 3 times in a row; a source that answers but returned nothing for 24 h after a week of items; jobs that ran out of retries or sit pending 30 min; alerts that cannot be delivered or are overdue; a silent worker (no heartbeat for 3 min); a backup older than 36 h. Failed notifications retry with backoff (8 attempts). Prometheus rules in `ops/alerts.yml` show in the Prometheus UI only; there is no Alertmanager.
+
+## Backups and recovery
+
+`scripts/backup.sh` writes to `~/backups/startup-intel` (owner-only): `daily/` (7 kept), `weekly/` (4 kept, Sundays) and `config/` (7 kept), an AES-256 bundle of `.env`, `config/` and the migrations. The key is `~/.config/startup-intel/backup.key`, created on first run. **Copy that key somewhere else now**: without it the bundle cannot be opened.
+
+Recovery, in order:
+
+1. Stop the worker and API.
+2. `scripts/restore_test.sh <file.dump>` proves the dump is good (it restores into a throwaway cluster and compares row counts; no change to your data). It also runs weekly from cron.
+3. `scripts/restore.sh <file.dump>` overwrites the live database, then runs the retention purge, which also replays the deletion ledger: a backup can hold raw content that live retention removed, or a person you have since asked to forget, and both are removed again automatically.
+4. Lost `.env`, `config/` or the deletion ledger: `openssl enc -d -aes-256-cbc -pbkdf2 -pass file:~/.config/startup-intel/backup.key -in ~/backups/startup-intel/config/<file>.enc | tar -xz -C <target dir>`, then `chmod 600 .env`, and put `deletions.jsonl` back in `~/.config/startup-intel/`.
+5. Start the API and worker, then `scripts/health_check.sh`. Queued jobs and unsent alerts resume on their own: leases expire and the work is re-claimed.
+
+## Retention and deletion
+
+Collected events stay as evidence references. After a source's `retention_days` (90 by default, 30 for email and Telegram) the hourly purge removes the event's text, author name and profile link and keeps its title, links, dates, derived fields and a few classification keys (`raw_metadata.scrubbed` marks it). Finished queue jobs are deleted after 30 days, dead ones after 90, source run history after 90, stale worker heartbeats after 7, model output text after 90. `python -m app.retention forget "<name or URL>"` clears a person's name and profile link on request and records the request on a deletion ledger, `~/.config/startup-intel/deletions.jsonl` (outside the database, mode 600, SHA-256 hashes only, included in every encrypted backup). Every purge replays the ledger, so a restore cannot bring a forgotten person back.
+
+## Quality (Phase 11)
+
+`cd backend && uv run python ../scripts/quality_report.py` is read-only and prints classifier precision and recall on the gold set, alert and detection latency, source contribution, why events count as India, duplicate rates against the 5 percent target, and the funding rankings. `--save NAME` stores the rankings as a "before" in `docs/quality/`; after any scoring or threshold change, `--compare NAME` shows how many of the top 25 moved. Thresholds for entity matching and event dedup are in `config/quality.yaml` (defaults equal the old hard-coded values). Alert and scoring rules are unchanged.
+
+## Roadmap (not built yet)
+
+- Least-privilege database roles: separate read-only and backup roles from the owner role the app uses today (needs a one-time superuser step).
+- Deletion sync from sources that require it (none in use today).
+- Phase 12 (data correctness and measurement: feed timestamp fix, classifier and India evaluation, company identity report, feedback capture design): `docs/phase12-plan.md`; steps 1, 3, 4 and 5 are done or designed, step 2 waits for labels. Feedback capture: `docs/feedback-design.md`; rate alerts with `cd backend && uv run python ../scripts/feedback.py next` (5 a day), `add`, `undo`, `stats`.
+- See `docs/decisions.md` rows 78 to 81 for the open Phase 11 proposals that need approval.
+
+## Security
+
+Secrets live only in `.env` (mode 600, never committed; the worker warns if it is not 600). Log lines and stored error text are redacted for configured secrets, Telegram bot tokens, bearer tokens and URL passwords. API, dashboard, Prometheus and Grafana bind to 127.0.0.1 and have no login (single owner, local machine).
 
 ## Notes
 

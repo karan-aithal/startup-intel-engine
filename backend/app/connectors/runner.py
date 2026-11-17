@@ -6,6 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.connectors.base import SourceAdapter
+from app.core.logging import redact
 from app.services import registry, scheduler
 from app.services.ingest import ingest_batch, load_cursor
 from app.services.quota import Limiter, RateLimited
@@ -71,15 +72,15 @@ async def run_once(sm: async_sessionmaker, adapter: SourceAdapter, scope: str = 
             await s.commit()
         return {"status": "deferred", "wait_s": rl.wait_s}
     except Exception as exc:  # noqa: BLE001 - isolate any connector failure
-        log.warning("source_failed", source=adapter.name, error=str(exc))
+        log.warning("source_failed", source=adapter.name, error=str(exc))  # the log processor redacts
         async with sm() as s:
-            await registry.record_failure(s, source_id, f"{type(exc).__name__}: {exc}")
+            await registry.record_failure(s, source_id, redact(f"{type(exc).__name__}: {exc}"))
             await scheduler.open_circuit_if_needed(s, source_id)
             await scheduler.schedule_next(s, source_id)
             await record_poll(s, source_id, interval, ok=False, items=None)
             await s.execute(
                 text("UPDATE source_runs SET status='error', finished_at=now(), error=:e WHERE id=:id"),
-                {"e": str(exc)[:2000], "id": run_id},
+                {"e": redact(str(exc))[:2000], "id": run_id},
             )
             await s.commit()
-        return {"status": "error", "error": str(exc)}
+        return {"status": "error", "error": redact(str(exc))}
