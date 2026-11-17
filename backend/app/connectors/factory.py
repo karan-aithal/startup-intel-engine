@@ -4,7 +4,9 @@ from app.connectors.base import SourceAdapter
 from app.connectors.feed import FeedAdapter
 
 
-def build_adapter(name: str, config: dict, *, sec_email: str = "", imap: dict | None = None, bot: dict | None = None) -> SourceAdapter:
+def build_adapter(name: str, config: dict, *, sec_email: str = "", imap: dict | None = None, bot: dict | None = None,
+                  secrets: dict | None = None) -> SourceAdapter:
+    secrets = secrets or {}
     kind = config.get("kind")
     if kind == "feed":
         return FeedAdapter(name, config["url"], config.get("region", "global"))
@@ -28,6 +30,19 @@ def build_adapter(name: str, config: dict, *, sec_email: str = "", imap: dict | 
         from app.connectors.page_monitor import PageMonitorAdapter
 
         return PageMonitorAdapter(name, config["careers_url"], config.get("company"))
+    if kind == "github":
+        from app.connectors.github import GithubAdapter
+
+        return GithubAdapter(name, config.get("orgs", []), secrets.get("github_token", ""))
+    if kind == "jooble":
+        from app.connectors.jooble import JoobleAdapter
+
+        if not config.get("terms_confirmed"):  # the owner's confirmation that this use of the API is permitted
+            raise ValueError("Jooble is gated: set jooble.terms_confirmed in config/sources.yaml after confirming permitted use")
+        if not secrets.get("jooble_api_key"):
+            raise ValueError("Jooble is gated: JOOBLE_API_KEY is not set")
+        return JoobleAdapter(name, secrets["jooble_api_key"], secrets.get("jooble_base_url") or "https://jooble.org/api", config["keywords"],
+                             config.get("location", "India"), config.get("pages", 1), config.get("region", "india"))
     if kind == "ats":
         return AtsAdapter(config["provider"], config["token"])
     raise ValueError(f"unknown connector kind {kind!r} for {name}")

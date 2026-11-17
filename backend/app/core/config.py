@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     llm_embed_model: str = "nomic-embed"
     auto_watch_cap: int = 200  # max companies the discovery loop may add to polling on its own
     auto_board_cap: int = 300  # max active auto-registered ATS boards (a company can have several); enforced separately
+    auto_source_cap: int = 0  # max discovered company feeds/careers pages the expansion loop may switch on; 0 = expansion off until you choose
+    github_token: str = ""  # optional: 5,000 requests/hour instead of 60 (a fine-grained token with no permissions is enough for public repos)
+    jooble_api_key: str = ""  # per-country key from jooble.org/api/about; the route also needs terms_confirmed in sources.yaml
+    jooble_base_url: str = "https://jooble.org/api"  # each Jooble country has its own domain: confirm yours before enabling
     sec_contact_email: str = ""  # required by SEC EDGAR in the User-Agent
 
     @field_validator("database_url")

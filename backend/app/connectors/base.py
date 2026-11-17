@@ -42,11 +42,14 @@ class Capabilities(BaseModel):
 class FetchResult(BaseModel):
     items: list[Any] = Field(default_factory=list)
     cursor: dict | None = None  # persist only after the batch is stored
+    retry_after_s: float | None = None  # partial batch: the provider's quota ran out; the scheduler waits at least this long
 
 
 class SourceAdapter(ABC):
     name: str
     connector_type: str
+    provider: str | None = None  # quota provider (config/acquisition.yaml); None = not rate-managed
+    limiter = None  # quota.Limiter, injected by run_once for adapters that name a provider; adapters call `await self.limiter.take()` per request
 
     @abstractmethod
     async def fetch(self, cursor: dict | None = None) -> FetchResult: ...

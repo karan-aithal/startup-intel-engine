@@ -42,3 +42,13 @@ bluesky:                # Jetstream; posts from `accounts` (handles or DIDs) and
   name: Bluesky Jetstream
   accounts: []
 page_monitors: []       # e.g. [{name: Acme careers, careers_url: "https://acme.com/careers", company: Acme, poll: 21600}]
+
+# Phase 8 (decision 58). Jooble India pilot: stays OFF. Needs JOOBLE_API_KEY (register at jooble.org/api/about; one key per country)
+# AND terms_confirmed: true, which you set only after confirming that this use is permitted. The free plan allows 100 requests/day.
+jooble:
+  name: Jooble India
+  poll: 14400
+  location: India
+  pages: 1
+  keywords: ["software engineer", "data scientist", "product manager", "devops engineer", "machine learning"]
+  terms_confirmed: false

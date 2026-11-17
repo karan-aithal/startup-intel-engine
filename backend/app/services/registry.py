@@ -54,7 +54,7 @@ async def is_enabled(s: AsyncSession, name: str, connector_type: str) -> bool:
 async def record_success(s: AsyncSession, source_id: str) -> None:
     await s.execute(
         text("""UPDATE source_registry SET health_status = 'HEALTHY', consecutive_failures = 0,
-                last_success_at = now(), updated_at = now() WHERE id = :id AND enabled"""),
+                last_success_at = now(), circuit_open_until = NULL, updated_at = now() WHERE id = :id AND enabled"""),
         {"id": source_id},
     )
 

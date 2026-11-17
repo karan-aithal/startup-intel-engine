@@ -37,6 +37,8 @@ async def process_event(s: AsyncSession, event_id: str) -> str:
         c = {"label": "funding", "amount": None}
     elif ev["event_type"] == "job":
         c = {"label": "hiring", "amount": None}
+    elif ev["event_type"] == "repo":  # GitHub launch signal: stored and correlated, never alerted (a repo blurb must not match funding/hiring keywords)
+        c = {"label": "none", "amount": None}
     else:
         c = classify(ev["title"], ev["content"])
     label = c["label"]

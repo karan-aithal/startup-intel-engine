@@ -25,6 +25,7 @@ from app.db.models.llm import (  # noqa: F401
 from app.db.models.ops import AlertDelivery, JobQueue, WorkerHeartbeat  # noqa: F401
 from app.db.models.sources import (  # noqa: F401
     Feedback,
+    RateLimit,
     SourceAccount,
     SourceCommunity,
     SourceEvent,

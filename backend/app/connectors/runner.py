@@ -6,8 +6,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.connectors.base import SourceAdapter
-from app.services import registry
+from app.services import registry, scheduler
 from app.services.ingest import ingest_batch, load_cursor
+from app.services.quota import Limiter, RateLimited
 
 log = structlog.get_logger()
 
@@ -41,6 +42,8 @@ async def run_once(sm: async_sessionmaker, adapter: SourceAdapter, scope: str = 
         )).scalar_one()
         await s.commit()
 
+    if adapter.provider:
+        adapter.limiter = Limiter(sm, adapter.provider)
     t0 = time.monotonic()
     try:
         result = await adapter.fetch(cursor)
@@ -52,6 +55,7 @@ async def run_once(sm: async_sessionmaker, adapter: SourceAdapter, scope: str = 
             new, dup = await ingest_batch(s, source_id, events, result.cursor, scope)
             await registry.record_success(s, source_id)
             await record_poll(s, source_id, interval, ok=True, items=len(result.items))
+            await scheduler.schedule_next(s, source_id, result.retry_after_s)
             await s.execute(
                 text("""UPDATE source_runs SET status='ok', finished_at=now(), items_fetched=:f, items_new=:n,
                         latency_ms=:ms WHERE id=:id"""),
@@ -59,10 +63,19 @@ async def run_once(sm: async_sessionmaker, adapter: SourceAdapter, scope: str = 
             )
             await s.commit()
         return {"status": "ok", "fetched": len(result.items), "new": new, "duplicates": dup}
+    except RateLimited as rl:  # our quota or the provider's: wait, do not count it against the source
+        log.info("source_deferred", source=adapter.name, wait_s=round(rl.wait_s), why=rl.why)
+        async with sm() as s:
+            await scheduler.schedule_next(s, source_id, rl.wait_s)
+            await s.execute(text("UPDATE source_runs SET status='skipped', finished_at=now(), error=:e WHERE id=:id"), {"e": str(rl)[:500], "id": run_id})
+            await s.commit()
+        return {"status": "deferred", "wait_s": rl.wait_s}
     except Exception as exc:  # noqa: BLE001 - isolate any connector failure
         log.warning("source_failed", source=adapter.name, error=str(exc))
         async with sm() as s:
             await registry.record_failure(s, source_id, f"{type(exc).__name__}: {exc}")
+            await scheduler.open_circuit_if_needed(s, source_id)
+            await scheduler.schedule_next(s, source_id)
             await record_poll(s, source_id, interval, ok=False, items=None)
             await s.execute(
                 text("UPDATE source_runs SET status='error', finished_at=now(), error=:e WHERE id=:id"),

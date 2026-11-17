@@ -1,0 +1,23 @@
+# Phase 8 acquisition control. Every number is a proposed default; the provider limits are from the providers' own docs.
+
+providers:                  # token bucket (burst, refill per second) plus a hard cap per window, set below the published limit
+  github:                   # https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api : 5,000/h with a token, 900 points/min secondary
+    {burst: 10, per_second: 1.0, cap: 4500, window_seconds: 3600}
+  github_anon:              # 60/h per IP without a token
+    {burst: 5, per_second: 0.0125, cap: 50, window_seconds: 3600}
+  jooble:                   # https://jooblehelpcenter.freshdesk.com/en/support/solutions/articles/60001448238 : free key 100 requests/day, resets 00:00 UTC
+    {burst: 6, per_second: 0.00104, cap: 90, window_seconds: 86400}   # refill = cap / window
+
+scheduling:
+  jitter: 0.1               # +-10% on every interval, so sources do not synchronise
+  min_interval_seconds: 60
+  max_interval_seconds: 3600   # adaptive slowing never pushes a source past this (a base interval already above it is left alone)
+  breaker: {failures: 3, cooldown_seconds: 300, max_cooldown_seconds: 21600}   # open after N consecutive failures; doubles per extra failure
+  activity: {window_days: 7, scale: 25}        # score = min(100, scale * log2(1 + new items per day))
+  factors: [[70, 0.5], [30, 1.0], [10, 1.5], [0, 2.0]]   # first row whose score threshold is met: interval x factor
+  idle_factor: 4            # nothing new in the whole window
+
+expansion:
+  github_orgs: 100          # organisations the GitHub route polls (watched, hot or funded companies first)
+  github_orgs_per_run: 20
+  github_new_repo_days: 30  # a first poll reports only repos created this recently

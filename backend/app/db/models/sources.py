@@ -4,6 +4,7 @@ from decimal import Decimal
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Float,
     Index,
     Integer,
     Numeric,
@@ -51,6 +52,9 @@ class SourceRegistry(Base, Timestamps):
     last_error_at = ts(default_now=False)
     last_error: Mapped[str | None] = mapped_column(Text)
     config: Mapped[dict] = jsonb()
+    next_poll_at = ts(default_now=False)  # adaptive schedule: when this route is next due
+    activity_score: Mapped[int | None] = mapped_column(SmallInteger)  # 0-100 from recent new items; null = no runs yet
+    circuit_open_until = ts(default_now=False)  # circuit breaker: no polling until then, then one trial
 
     __table_args__ = (
         UniqueConstraint("name", "connector_type", name="uq_source_registry_name_route"),
@@ -63,6 +67,18 @@ class SourceRegistry(Base, Timestamps):
         # Zero-cost guard: a source that bills per read cannot exist unless explicitly approved.
         CheckConstraint("cost_per_read = 0 OR paid_approved", name="zero_cost_guard"),
     )
+
+
+class RateLimit(Base):
+    """Token bucket plus window cap per provider, persisted so a restart cannot reset the quota."""
+
+    __tablename__ = "rate_limits"
+    provider: Mapped[str] = mapped_column(String(40), primary_key=True)
+    tokens: Mapped[float] = mapped_column(Float)
+    refilled_at = ts()
+    window_started_at = ts()
+    window_used: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    blocked_until = ts(default_now=False)  # set from Retry-After / x-ratelimit-reset after a 429
 
 
 class SourceRun(Base):

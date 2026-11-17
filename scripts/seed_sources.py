@@ -24,7 +24,8 @@ def routes(cfg: dict):
     """Yield (name, connector_type, fields) for every approved source."""
     for f in cfg["feeds"]:
         yield f["name"], "feed", dict(category="funding", access_method="RSS/Atom", docs_url=DOCS["feed"],
-            poll_interval_seconds=f["poll"], config={"kind": "feed", "url": f["url"], "region": f["region"]})
+            poll_interval_seconds=f["poll"], config={"kind": "feed", "url": f["url"], "region": f["region"],
+                                                 **({"fallback_for": f["fallback_for"]} if f.get("fallback_for") else {})})
     h = cfg["hn"]
     yield h["name"], "api", dict(category="funding", access_method="HN Algolia search API", docs_url=DOCS["hn"],
         poll_interval_seconds=h["poll"], config={"kind": "hn", "queries": h["queries"]})
@@ -49,6 +50,15 @@ def routes(cfg: dict):
     for m in cfg.get("page_monitors", []):
         yield m["name"], "page_monitor", dict(category="hiring", access_method="sitemap + schema.org JobPosting", docs_url="robots.txt checked",
             poll_interval_seconds=m["poll"], config={"kind": "page_monitor", "careers_url": m["careers_url"], "company": m.get("company")})
+    yield "GitHub Orgs", "api", dict(category="company", access_method="GitHub REST API (new repos of watched organisations)",
+        docs_url="https://docs.github.com/en/rest/repos/repos#list-organization-repositories", poll_interval_seconds=3600,
+        config={"kind": "github", "orgs": []})
+    j = cfg.get("jooble")
+    if j:
+        yield j["name"], "api", dict(category="hiring", access_method="Jooble REST API (owner's key, India pilot)",
+            docs_url="https://jooblehelpcenter.freshdesk.com/en/support/solutions/articles/60001448238-rest-api-documentation",
+            poll_interval_seconds=j["poll"], config={"kind": "jooble", "keywords": j["keywords"], "location": j["location"],
+                                                      "pages": j.get("pages", 1), "terms_confirmed": bool(j.get("terms_confirmed"))})
     for provider, tokens in cfg["ats"].items():
         for t in tokens:
             yield f"{provider}:{t}", "api", dict(category="hiring", access_method=f"{provider} job board API",
@@ -67,6 +77,8 @@ async def main(enable: bool) -> None:
             await register_source(s, name, ctype, **fields)
             n += 1
             kind = fields["config"]["kind"]
+            if kind == "jooble" or (kind == "github" and not st.github_token):
+                continue  # Jooble is never switched on by --enable; GitHub needs a token (60 requests/hour is not worth a route)
             if enable and (has_email or kind != "sec_form_d") and (has_imap or kind != "imap") and (has_bot or kind != "share_bot"):
                 await set_enabled(s, name, ctype, True)
                 on += 1

@@ -21,21 +21,18 @@ from app.db.session import get_engine, get_sessionmaker
 from app.services import ats, companies, queue
 from app.services.correlate import correlate_all
 from app.services.discovery import discover_pending
+from app.services.expansion import demote_sources, expand_sources, sync_github_orgs
 from app.services.llm import enrich_event
 from app.services.notify import deliver_pending, make_sink
 from app.services.pipeline import process_event
+from app.services.scheduler import DUE_SQL, update_activity
 from app.services.verify import verify_all
 
 log = structlog.get_logger()
 WORKER = f"{socket.gethostname()}-{os.getpid()}"
 
-DUE_SQL = text("""
-    SELECT r.name, r.config FROM source_registry r
-    WHERE r.enabled AND r.connector_type NOT IN ('stream', 'discovery') AND coalesce((SELECT max(started_at) FROM source_runs WHERE source_id = r.id), 'epoch')
-          + make_interval(secs => coalesce(r.poll_interval_seconds, 900)) <= now()""")
 
-
-async def poll_due(sm, sec_email: str, imap: dict | None = None, bot: dict | None = None, concurrency: int = 5) -> list[dict]:
+async def poll_due(sm, sec_email: str, imap: dict | None = None, bot: dict | None = None, concurrency: int = 5, secrets: dict | None = None) -> list[dict]:
     """One scheduler pass. Each source runs isolated; run_once records its own failure."""
     async with sm() as s:
         due = (await s.execute(DUE_SQL)).all()
@@ -44,7 +41,7 @@ async def poll_due(sm, sec_email: str, imap: dict | None = None, bot: dict | Non
     async def one(name, config):
         async with sem:
             try:
-                return await run_once(sm, build_adapter(name, config, sec_email=sec_email, imap=imap, bot=bot))
+                return await run_once(sm, build_adapter(name, config, sec_email=sec_email, imap=imap, bot=bot, secrets=secrets))
             except Exception as exc:  # noqa: BLE001 - bad config for one source must not stop the rest
                 log.warning("source_build_failed", source=name, error=str(exc))
                 return {"status": "error", "error": str(exc)}
@@ -54,6 +51,10 @@ async def poll_due(sm, sec_email: str, imap: dict | None = None, bot: dict | Non
 
 def imap_cfg(cfg) -> dict:
     return {"host": cfg.imap_host, "user": cfg.imap_user, "password": cfg.imap_password, "folder": cfg.imap_folder}
+
+
+def secrets_cfg(cfg) -> dict:
+    return {"github_token": cfg.github_token, "jooble_api_key": cfg.jooble_api_key, "jooble_base_url": cfg.jooble_base_url}
 
 
 def bot_cfg(cfg) -> dict:
@@ -109,6 +110,10 @@ async def verification(sm) -> None:
 async def maintenance(sm, cfg) -> None:
     """Hot-company polling rates, and the monthly Common Crawl seeding run (when that route is enabled)."""
     async with sm() as s:
+        await update_activity(s)
+        await demote_sources(s)
+        await expand_sources(s, cfg.auto_source_cap)
+        await sync_github_orgs(s)
         await ats.demote_stale(s)
         await ats.promote_candidates(s, cfg.auto_watch_cap, cfg.auto_board_cap)
         await ats.refresh_hot_polling(s)
@@ -167,7 +172,7 @@ async def _streams(sm) -> list[tuple[str, dict]]:
 
 async def _run(sm, sink, cfg, beat):
     await asyncio.gather(
-        _loop("scheduler", lambda: poll_due(sm, cfg.sec_contact_email, imap_cfg(cfg), bot_cfg(cfg)), 30),
+        _loop("scheduler", lambda: poll_due(sm, cfg.sec_contact_email, imap_cfg(cfg), bot_cfg(cfg), secrets=secrets_cfg(cfg)), 30),
         _loop("jobs", lambda: process_jobs(sm), 2),
         _loop("alerts", lambda: deliver_pending(sm, sink, cfg.display_timezone), 5),
         _loop("heartbeat", beat, 30),

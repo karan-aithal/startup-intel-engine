@@ -42,6 +42,10 @@ async def correlate_company(s: AsyncSession, company_id: str, now: datetime | No
     senior = [j for j in recent if j.seniority in co["senior_levels"]]
     if len(senior) >= co["senior_roles"]:
         await _signal(s, company_id, "senior_hiring", month, now, {"roles": len(senior), "days": co["surge_days"]}, now)
+    repos = (await s.execute(text("""SELECT count(*) AS n, max(published_at) AS last FROM source_events WHERE event_type = 'repo'
+        AND raw_metadata->>'company_id' = :c AND published_at > :t"""), {"c": company_id, "t": now - timedelta(days=30)})).one()
+    if repos.n:
+        await _signal(s, company_id, "new_repo", month, repos.last, {"repos": repos.n, "days": 30}, now)
     # an investor that appears in a later verified round but in none of the earlier ones
     for r in (await s.execute(text("""SELECT ci.investor_id, f.id AS round_id, f.announced_at FROM company_investors ci
         JOIN funding_rounds f ON f.id = ci.funding_round_id WHERE ci.company_id = :c AND f.verification_status = 'VERIFIED'
