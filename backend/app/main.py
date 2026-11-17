@@ -4,7 +4,7 @@ import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import dashboard, health, watchlist
+from app.api import dashboard, health, intel, watchlist
 from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.db.session import get_engine
@@ -25,4 +25,5 @@ app.add_middleware(
 )
 app.include_router(health.router)
 app.include_router(dashboard.router)
+app.include_router(intel.router)
 app.include_router(watchlist.router)
