@@ -19,8 +19,11 @@ def ev(type_, group="g", supports=True):
 def test_assess_rules():
     a = scoring.assess([ev("community")], rumour_only=False)
     assert a["status"] == "UNVERIFIED" and "community_only" in a["flags"]
-    o = scoring.assess([ev("press_wire")], rumour_only=False)
-    assert o["status"] == "VERIFIED" and o["confidence"] == 90
+    o = scoring.assess([ev("official_company")], rumour_only=False)
+    assert o["status"] == "VERIFIED" and o["confidence"] == 95
+    w = scoring.assess([ev("press_wire")], rumour_only=False)  # a wire alone is not official: it publishes whatever an issuer sends
+    assert w["status"] == "PARTIALLY_VERIFIED" and "single_independent_source" in w["flags"]
+    assert scoring.assess([ev("press_wire", "x"), ev("reputable_publication", "y")], False)["status"] == "VERIFIED"
     assert scoring.assess([ev("reputable_publication")], False)["status"] == "PARTIALLY_VERIFIED"
     # three copies in one syndication group are one voice
     copies = scoring.assess([ev("reputable_publication", "x")] * 3, False)
@@ -47,13 +50,13 @@ async def company(sm, name="Zypto", india=False):
     return str(cid)
 
 
-async def claim(sm, cid, source, amount=5_000_000, h=None, rumour=False, days_ago=1, stage="seed", status="unverified"):
+async def claim(sm, cid, source, amount=5_000_000, h=None, rumour=False, days_ago=1, stage="seed", status="unverified", issuer=None):
     async with sm() as s:
         sid = await registry.register_source(s, source, "feed")
         t = NOW - timedelta(days=days_ago)
         n = next(_n)
-        eid = (await s.execute(text("""INSERT INTO source_events (source_id, source_event_id, event_type, title, content_hash, published_at, detected_at)
-            VALUES (:s, :n, 'article', :t, :h, :p, :p) RETURNING id"""), {"s": sid, "n": f"e{n}", "t": f"Zypto raises {n}", "h": h, "p": t})).scalar_one()
+        eid = (await s.execute(text("""INSERT INTO source_events (source_id, source_event_id, event_type, title, content_hash, published_at, detected_at, company_name)
+            VALUES (:s, :n, 'article', :t, :h, :p, :p, :cn) RETURNING id"""), {"s": sid, "n": f"e{n}", "t": f"Zypto raises {n}", "h": h, "p": t, "cn": issuer})).scalar_one()
         await s.execute(text("""INSERT INTO funding_round_claims (source_event_id, company_id, stage, amount_value, currency, is_rumour, origin, status)
             VALUES (:e, :c, :st, :a, 'USD', :r, 'regex', :s)"""), {"e": eid, "c": cid, "st": stage, "a": amount, "r": rumour, "s": status})
         await s.commit()
@@ -79,10 +82,10 @@ async def test_community_claim_stays_unverified_and_official_evidence_raises_con
     assert await rounds(sm) == []  # no authoritative row for an unverified claim
     async with sm() as s:
         assert (await s.execute(text("SELECT status FROM funding_round_claims"))).scalar_one() == "unverified"
-    await claim(sm, cid, "PR Newswire VC")  # company press release (90)
+    await claim(sm, cid, "SEC EDGAR Form D", issuer="Zypto, Inc.")  # filed by the company itself (95)
     assert await verify(sm, cid) == {"VERIFIED": 1}
     [r] = await rounds(sm)
-    assert r.verification_status == "VERIFIED" and r.confidence == 95  # 90 plus one independent corroborating voice
+    assert r.verification_status == "VERIFIED" and r.confidence == 100  # 95 plus one independent corroborating voice
     async with sm() as s:
         assert {x for x in (await s.execute(text("SELECT status FROM funding_round_claims"))).scalars()} == {"verified"}
         assert (await s.execute(text("SELECT count(*) FROM evidence WHERE funding_round_id IS NOT NULL"))).scalar_one() == 2
@@ -156,6 +159,7 @@ async def test_rejected_claim_unsupports_its_round_and_old_partial_rounds_expire
 async def test_verified_round_promotes_investors_and_founders_with_evidence(sm):
     cid = await company(sm)
     e = await claim(sm, cid, "PR Newswire VC")
+    await claim(sm, cid, "Sifted")  # a wire alone is only PARTIALLY_VERIFIED
     async with sm() as s:
         await s.execute(text("""INSERT INTO company_investor_claims (source_event_id, company_id, name, canonical_name, origin, role)
             VALUES (:e, :c, 'Accel', 'accel', 'regex', 'lead')"""), {"e": e, "c": cid})
@@ -275,3 +279,39 @@ async def test_signal_data_is_refreshed_not_frozen(sm):
         rows = (await s.execute(text("SELECT data, occurred_at FROM company_signals WHERE signal_type = 'hiring_surge'"))).all()
     assert len(rows) == 1 and rows[0].data["jobs"] == 15  # same identity, fresh count
     assert rows[0].data["refreshed_at"].startswith("2026-11-16T15") and rows[0].occurred_at == NOW  # first observation time is kept
+
+
+async def test_press_wire_alone_does_not_verify(sm):
+    cid = await company(sm)
+    await claim(sm, cid, "PR Newswire VC")
+    await verify(sm, cid)
+    [r] = await rounds(sm)
+    assert r.verification_status == "PARTIALLY_VERIFIED" and r.confidence == 90
+    await claim(sm, cid, "Entrackr")  # an independent outlet confirms it
+    await verify(sm, cid)
+    assert (await rounds(sm))[0].verification_status == "VERIFIED"
+
+
+async def test_sec_filing_counts_only_when_the_issuer_is_the_company(sm):
+    cid = await company(sm)
+    await claim(sm, cid, "SEC EDGAR Form D", issuer="Zypto Labs Inc")  # canonical() drops the suffix: same company
+    await verify(sm, cid)
+    assert (await rounds(sm))[0].verification_status == "VERIFIED"
+    other = await company(sm, "Acme")
+    await claim(sm, other, "SEC EDGAR Form D", issuer="Zypto Holdings LLC")  # somebody else's filing
+    await verify(sm, other)
+    async with sm() as s:
+        r = (await s.execute(text("SELECT verification_status, confidence, risk_flags FROM funding_rounds WHERE company_id = :c"), {"c": other})).first()
+    assert r is None  # scored as community: no authoritative round
+    async with sm() as s:
+        assert (await s.execute(text("SELECT status FROM funding_round_claims WHERE company_id = :c"), {"c": other})).scalar_one() == "unverified"
+    await claim(sm, other, "Entrackr")  # with a real outlet the round exists, but the wrong-issuer filing is flagged and adds no weight
+    await verify(sm, other)
+    async with sm() as s:
+        r = (await s.execute(text("SELECT verification_status, confidence, risk_flags FROM funding_rounds WHERE company_id = :c"), {"c": other})).one()
+    assert r.verification_status == "PARTIALLY_VERIFIED" and "issuer_mismatch" in r.risk_flags
+
+
+def test_stage_relevance_peaks_at_series_a():
+    f = lambda st: scoring.funding_scores(st, 90, False, NOW, 90, [], NOW)[1]
+    assert f("series a") > f("seed") > f("pre-seed") and f("series a") > f("series b") > f("series c")

@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services import scoring
 from app.services.claims import _same_amount
+from app.services.companies import canonical
 from app.services.pipeline import INDIA
 
 NIL = "00000000-0000-0000-0000-000000000000"
@@ -44,6 +45,15 @@ def _groups(rows: list[dict], pairs: list[tuple]) -> dict:
     for e in parent:
         members.setdefault(find(e), []).append(e)
     return {e: min(map(str, m)) for m in members.values() for e in m}
+
+
+def _etype(c: dict, company_canonical: str) -> str:
+    """Evidence type of a claim's source. An SEC filing is official only when its issuer (named in the filing title) is this company:
+    a Form D from another entity proves nothing about this one, so it is scored as an unlisted source."""
+    t = scoring.evidence_type(c["source"])
+    if t == "official_filing" and canonical(c["event_company"] or "") != canonical(company_canonical):
+        return "community"
+    return t
 
 
 def cluster(claims: list[dict]) -> list[list[dict]]:
@@ -82,7 +92,7 @@ def _stage(k: list[dict]) -> str | None:
 async def _load(s: AsyncSession, company_id: str) -> list[dict]:
     rows = (await s.execute(text("""
         SELECT c.id, c.source_event_id AS eid, c.amount_value, c.currency, c.stage, c.is_rumour, c.status, c.funding_round_id,
-               c.evidence, e.title, e.canonical_url, e.content_hash, e.source_id, e.detected_at, e.raw_metadata, r.name AS source,
+               c.evidence, e.title, e.company_name AS event_company, e.canonical_url, e.content_hash, e.source_id, e.detected_at, e.raw_metadata, r.name AS source,
                coalesce(e.published_at, e.detected_at) AS seen
         FROM funding_round_claims c JOIN source_events e ON e.id = c.source_event_id JOIN source_registry r ON r.id = e.source_id
         WHERE c.company_id = :c AND c.status IN ('unverified', 'verified') ORDER BY seen, c.id"""), {"c": company_id})).mappings().all()
@@ -92,16 +102,19 @@ async def _load(s: AsyncSession, company_id: str) -> list[dict]:
 async def verify_company(s: AsyncSession, company_id: str, now: datetime | None = None) -> dict:
     now, v = now or datetime.now(UTC), scoring.cfg()["verification"]
     claims = await _load(s, company_id)
-    co = (await s.execute(text("SELECT is_india_linked FROM companies WHERE id = :c"), {"c": company_id})).one()
+    co = (await s.execute(text("SELECT is_india_linked, canonical_name FROM companies WHERE id = :c"), {"c": company_id})).one()
     ids = [c["eid"] for c in claims]
     pairs = [(r.event_id, r.related_event_id) for r in (await s.execute(text("""SELECT event_id, related_event_id FROM event_relationships
         WHERE kind = 'syndicated_copy' AND (event_id = ANY(:i) OR related_event_id = ANY(:i))"""), {"i": ids})).all()] if ids else []
     group = _groups(claims, pairs)
     plans = []
     for k in cluster(claims):
-        ev = [{"claim": c, "group": group[c["eid"]], "type": (t := scoring.evidence_type(c["source"])), "weight": scoring.weight(t), "supports": True}
+        ev = [{"claim": c, "group": group[c["eid"]], "type": (t := _etype(c, co.canonical_name)), "weight": scoring.weight(t), "supports": True}
               for c in k]
         a = scoring.assess(ev, rumour_only=all(c["is_rumour"] for c in k))
+        if any(scoring.evidence_type(c["source"]) == "official_filing" and e["type"] != "official_filing"
+               for c, e in zip(k, ev, strict=True)):
+            a["flags"].append("issuer_mismatch")
         if any((c["evidence"] or {}).get("alternatives") for c in k):
             a["flags"].append("extraction_disagreement")
         if not any(c["amount_value"] is not None for c in k):

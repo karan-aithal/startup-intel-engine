@@ -12,7 +12,9 @@ evidence_weights:            # PROMPT.md "Verification" table
   discussion: 55
   community: 25              # anonymous / unknown: the default for any source not listed below
 
-official_types: [official_company, official_investor, official_filing, press_wire]   # one of these can VERIFY on its own
+# One of these can VERIFY on its own. press_wire is NOT here: a wire carries whatever an issuer pays to publish, so it needs an
+# independent second source. official_filing counts only when the filing's issuer is the claim's company (else it is scored as community).
+official_types: [official_company, official_investor, official_filing]
 
 source_types:                # exact source_registry.name -> evidence type
   PR Newswire VC: press_wire
@@ -50,7 +52,8 @@ scores:                      # F = 0.30S + 0.25R + 0.20I + 0.15N + 0.10V ; globa
   emerging: {G: 0.30, D: 0.25, I: 0.20, R: 0.15, N: 0.10}
   freshness_half_life_days: 7
   novelty_half_life_days: 60
-  stage_relevance: {pre-seed: 90, seed: 100, pre-series a: 90, series a: 85, series b: 60, series c: 40, bridge: 40, strategic: 40}
+  # PROPOSED: favours the stages where startups start hiring (Series A peak); pre-seed teams rarely hire
+  stage_relevance: {pre-seed: 70, seed: 90, pre-series a: 85, series a: 100, series b: 80, series c: 55, bridge: 40, strategic: 40}
   stage_unknown: 50
 
 risk_flags:                  # name: penalty subtracted from the final score
@@ -61,6 +64,7 @@ risk_flags:                  # name: penalty subtracted from the final score
   possible_conflicting_amount: 5   # different amounts, stages differ or unknown: kept, flagged for review
   extraction_disagreement: 5
   no_amount: 5
+  issuer_mismatch: 15              # an SEC filing whose issuer is not the claim's company
 
 correlation:
   hiring_window_days: 90     # jobs published within this many days after the funding announcement
