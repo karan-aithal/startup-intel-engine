@@ -58,6 +58,7 @@ risk_flags:                  # name: penalty subtracted from the final score
   community_only: 20
   rumour_only: 20
   conflicting_amount: 15
+  possible_conflicting_amount: 5   # different amounts, stages differ or unknown: kept, flagged for review
   extraction_disagreement: 5
   no_amount: 5
 

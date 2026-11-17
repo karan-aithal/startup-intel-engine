@@ -76,6 +76,7 @@ class Founder(Base, Timestamps):
     role: Mapped[str | None] = mapped_column(String(80))
     profile_url: Mapped[str | None] = mapped_column(Text)
     evidence_id: Mapped[uuid.UUID | None] = uuid_fk("evidence.id", nullable=True, ondelete="SET NULL")
+    promoted_by: Mapped[str | None] = mapped_column(String(20))  # 'phase7' = written by verification, so verification may also remove it
     __table_args__ = (UniqueConstraint("company_id", "name", name="uq_founders_company_name"),)
 
 
@@ -128,6 +129,7 @@ class CompanyInvestor(Base):
     funding_round_id: Mapped[uuid.UUID | None] = uuid_fk("funding_rounds.id", nullable=True)
     role: Mapped[str | None] = mapped_column(String(20))  # lead / participant / existing
     evidence_id: Mapped[uuid.UUID | None] = uuid_fk("evidence.id", nullable=True, ondelete="SET NULL")
+    promoted_by: Mapped[str | None] = mapped_column(String(20))
     __table_args__ = (
         UniqueConstraint("company_id", "investor_id", "funding_round_id",
                          name="uq_company_investors_triple", postgresql_nulls_not_distinct=True),

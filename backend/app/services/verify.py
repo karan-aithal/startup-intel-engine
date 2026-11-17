@@ -106,14 +106,19 @@ async def verify_company(s: AsyncSession, company_id: str, now: datetime | None 
             a["flags"].append("extraction_disagreement")
         if not any(c["amount_value"] is not None for c in k):
             a["flags"].append("no_amount")
-        plans.append({**a, "claims": k, "evidence": ev, "contradicts": [], "round_ids": {c["funding_round_id"] for c in k if c["funding_round_id"]}})
+        plans.append({**a, "stage": _stage(k), "claims": k, "evidence": ev, "contradicts": [], "round_ids": {c["funding_round_id"] for c in k if c["funding_round_id"]}})
     live = [p for p in plans if p["status"] != "UNVERIFIED"]
     for i, a in enumerate(live):  # contradiction: different amounts, same currency, same window, both at least partially verified
         for b in live[i + 1:]:
             ha, hb = a["claims"][0], b["claims"][0]
             if ha["amount_value"] is not None and hb["amount_value"] is not None and ha["currency"] == hb["currency"] \
                     and abs(ha["seen"] - hb["seen"]) <= timedelta(days=v["cluster_window_days"]) and not _same_amount(ha["amount_value"], hb["amount_value"]):
-                scoring.decide_conflict(a, b)
+                if a["stage"] and a["stage"] == b["stage"]:
+                    scoring.decide_conflict(a, b)  # same stage: they describe one round, so one of the amounts is wrong
+                else:  # a seed extension and a Series A can both be real: keep both, flag for review, change nothing else
+                    for x in (a, b):
+                        if "possible_conflicting_amount" not in x["flags"]:
+                            x["flags"].append("possible_conflicting_amount")
     for p in plans:
         newest = max(c["seen"] for c in p["claims"])
         if p["status"] == "PARTIALLY_VERIFIED" and now - newest > timedelta(days=v["expire_partial_days"]):
@@ -132,7 +137,25 @@ async def verify_company(s: AsyncSession, company_id: str, now: datetime | None 
         risk_flags = '["all_claims_rejected"]'::jsonb, updated_at = now()
         WHERE f.company_id = :c AND f.verification_status NOT IN ('UNVERIFIED') AND NOT EXISTS (
             SELECT 1 FROM funding_round_claims x WHERE x.funding_round_id = f.id AND x.status IN ('unverified', 'verified'))"""), {"c": company_id})
+    await _reconcile_people(s, company_id)
     return counts
+
+
+async def _reconcile_people(s: AsyncSession, company_id: str) -> None:
+    """Promotion is reversible. A row Phase 7 wrote (promoted_by = 'phase7') survives only while a non-rejected person claim still backs it
+    through a funding claim whose round is VERIFIED right now. Rows without the marker (manual, other jobs) are never touched, and a
+    relationship backed by another VERIFIED round keeps its own row for that round."""
+    backed = """EXISTS (SELECT 1 FROM {t} x JOIN funding_round_claims fc ON fc.source_event_id = x.source_event_id
+        JOIN funding_rounds f ON f.id = fc.funding_round_id
+        WHERE x.company_id = :c AND x.status <> 'rejected' AND fc.status IN ('unverified', 'verified') AND f.verification_status = 'VERIFIED'{extra})"""
+    await s.execute(text(f"""DELETE FROM company_investors ci USING investors i WHERE ci.company_id = :c AND ci.promoted_by = 'phase7' AND i.id = ci.investor_id
+        AND NOT {backed.format(t="company_investor_claims", extra=" AND x.canonical_name = i.canonical_name AND fc.funding_round_id = ci.funding_round_id")}"""), {"c": company_id})
+    await s.execute(text(f"""DELETE FROM founders fo WHERE fo.company_id = :c AND fo.promoted_by = 'phase7'
+        AND NOT {backed.format(t="company_founder_claims", extra=" AND x.name = fo.name")}"""), {"c": company_id})
+    for t in ("company_investor_claims", "company_founder_claims"):  # claims that were marked verified fall back with their round
+        await s.execute(text(f"""UPDATE {t} x SET status = 'unverified' WHERE x.company_id = :c AND x.status = 'verified' AND NOT EXISTS (
+            SELECT 1 FROM funding_round_claims fc JOIN funding_rounds f ON f.id = fc.funding_round_id
+            WHERE fc.source_event_id = x.source_event_id AND f.verification_status = 'VERIFIED')"""), {"c": company_id})
 
 
 async def _write_round(s: AsyncSession, company_id: str, p: dict, india_company: bool, now: datetime) -> None:
@@ -201,14 +224,14 @@ async def _promote_people(s: AsyncSession, company_id: str, round_id, event_ids:
         inv = (await s.execute(text("""INSERT INTO investors (name, canonical_name) VALUES (:n, :c)
             ON CONFLICT (canonical_name) DO UPDATE SET canonical_name = EXCLUDED.canonical_name RETURNING id"""),
             {"n": r.name, "c": r.canonical_name})).scalar_one()
-        await s.execute(text("""INSERT INTO company_investors (company_id, investor_id, funding_round_id, role, evidence_id)
-            VALUES (:c, :i, :f, :r, :ev) ON CONFLICT (company_id, investor_id, funding_round_id)
-            DO UPDATE SET role = coalesce(EXCLUDED.role, company_investors.role)"""),
+        await s.execute(text("""INSERT INTO company_investors (company_id, investor_id, funding_round_id, role, evidence_id, promoted_by)
+            VALUES (:c, :i, :f, :r, :ev, 'phase7') ON CONFLICT (company_id, investor_id, funding_round_id)
+            DO UPDATE SET role = coalesce(company_investors.role, EXCLUDED.role)"""),
             {"c": company_id, "i": inv, "f": round_id, "r": r.role, "ev": evidence_ids.get(r.source_event_id)})
         await s.execute(text("UPDATE company_investor_claims SET status = 'verified' WHERE id = :i"), {"i": r.id})
     for r in (await s.execute(text("""SELECT id, source_event_id, name FROM company_founder_claims
             WHERE company_id = :c AND source_event_id = ANY(:e) AND status <> 'rejected'"""), {"c": company_id, "e": event_ids})).all():
-        await s.execute(text("""INSERT INTO founders (company_id, name, evidence_id) VALUES (:c, :n, :ev)
+        await s.execute(text("""INSERT INTO founders (company_id, name, evidence_id, promoted_by) VALUES (:c, :n, :ev, 'phase7')
             ON CONFLICT (company_id, name) DO NOTHING"""), {"c": company_id, "n": r.name, "ev": evidence_ids.get(r.source_event_id)})
         await s.execute(text("UPDATE company_founder_claims SET status = 'verified' WHERE id = :i"), {"i": r.id})
 

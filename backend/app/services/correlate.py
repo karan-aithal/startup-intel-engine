@@ -17,10 +17,12 @@ JOBS = """SELECT e.id, e.published_at AS at, l.result->>'seniority' AS seniority
     WHERE e.event_type = 'job' AND b.company_id = :c AND e.published_at IS NOT NULL"""
 
 
-async def _signal(s: AsyncSession, company_id: str, kind: str, key: str, at: datetime, data: dict) -> None:
+async def _signal(s: AsyncSession, company_id: str, kind: str, key: str, at: datetime, data: dict, now: datetime) -> None:
+    """Identity is (company, type, key); data is refreshed on every pass so a count never goes stale. occurred_at keeps the first observation."""
     await s.execute(text("""INSERT INTO company_signals (company_id, signal_type, signal_key, occurred_at, data)
-        VALUES (:c, :t, :k, :a, CAST(:d AS jsonb)) ON CONFLICT (company_id, signal_type, signal_key) DO NOTHING"""),
-        {"c": company_id, "t": kind, "k": key, "a": at, "d": json.dumps(data | {"note": "sequence observed; no causal claim"})})
+        VALUES (:c, :t, :k, :a, CAST(:d AS jsonb)) ON CONFLICT (company_id, signal_type, signal_key) DO UPDATE SET data = EXCLUDED.data"""),
+        {"c": company_id, "t": kind, "k": key, "a": at,
+         "d": json.dumps(data | {"note": "sequence observed; no causal claim", "refreshed_at": now.isoformat()})})
 
 
 async def correlate_company(s: AsyncSession, company_id: str, now: datetime | None = None) -> None:
@@ -32,21 +34,21 @@ async def correlate_company(s: AsyncSession, company_id: str, now: datetime | No
         after = sorted(j.at for j in jobs if r.at < j.at <= r.at + timedelta(days=co["hiring_window_days"]))
         if after:
             await _signal(s, company_id, "funding_then_hiring", str(r.id), after[0],
-                          {"round_id": str(r.id), "jobs": len(after), "window_days": co["hiring_window_days"]})
+                          {"round_id": str(r.id), "jobs": len(after), "window_days": co["hiring_window_days"]}, now)
     recent = [j for j in jobs if now - timedelta(days=co["surge_days"]) <= j.at <= now]
     month = f"{now:%Y-%m}"
     if len(recent) >= co["surge_jobs"]:
-        await _signal(s, company_id, "hiring_surge", month, now, {"jobs": len(recent), "days": co["surge_days"]})
+        await _signal(s, company_id, "hiring_surge", month, now, {"jobs": len(recent), "days": co["surge_days"]}, now)
     senior = [j for j in recent if j.seniority in co["senior_levels"]]
     if len(senior) >= co["senior_roles"]:
-        await _signal(s, company_id, "senior_hiring", month, now, {"roles": len(senior), "days": co["surge_days"]})
+        await _signal(s, company_id, "senior_hiring", month, now, {"roles": len(senior), "days": co["surge_days"]}, now)
     # an investor that appears in a later verified round but in none of the earlier ones
     for r in (await s.execute(text("""SELECT ci.investor_id, f.id AS round_id, f.announced_at FROM company_investors ci
         JOIN funding_rounds f ON f.id = ci.funding_round_id WHERE ci.company_id = :c AND f.verification_status = 'VERIFIED'
         AND EXISTS (SELECT 1 FROM funding_rounds o WHERE o.company_id = :c AND o.verification_status = 'VERIFIED' AND o.announced_at < f.announced_at)
         AND NOT EXISTS (SELECT 1 FROM company_investors x JOIN funding_rounds o ON o.id = x.funding_round_id
             WHERE x.company_id = :c AND x.investor_id = ci.investor_id AND o.announced_at < f.announced_at)"""), {"c": company_id})).all():
-        await _signal(s, company_id, "new_investor", str(r.investor_id), r.announced_at, {"round_id": str(r.round_id)})
+        await _signal(s, company_id, "new_investor", str(r.investor_id), r.announced_at, {"round_id": str(r.round_id)}, now)
     await _emerging(s, company_id, jobs, now)
 
 

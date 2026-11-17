@@ -194,3 +194,84 @@ async def test_funding_followed_by_hiring_is_detected_and_scores_are_stored(sm):
         assert f.score_india > f.score_global  # India-linked company: the India term adds to the India score only
         e = (await s.execute(text("SELECT emerging_india, emerging_global FROM companies"))).one()
         assert e.emerging_india is not None and e.emerging_global is not None
+
+
+async def test_different_stages_in_the_same_window_are_both_kept_and_flagged(sm):
+    cid = await company(sm)
+    await claim(sm, cid, "Entrackr", 2_000_000, stage="seed", days_ago=5)  # seed extension
+    await claim(sm, cid, "Inc42", 9_000_000, stage="series a", days_ago=3)  # a separate, legitimate round
+    await verify(sm, cid)
+    two, nine = await rounds(sm)
+    assert two.verification_status == nine.verification_status == "PARTIALLY_VERIFIED"  # nobody is CONTRADICTED
+    assert two.confidence == nine.confidence == 90  # and nobody pays the contradiction penalty
+    for r in (two, nine):
+        assert "possible_conflicting_amount" in r.risk_flags and "conflicting_amount" not in r.risk_flags
+    async with sm() as s:
+        assert (await s.execute(text("SELECT count(*) FROM evidence WHERE supports = false"))).scalar_one() == 0
+
+
+async def test_unknown_stage_is_also_only_flagged(sm):
+    cid = await company(sm)
+    await claim(sm, cid, "Entrackr", 2_000_000, stage=None)
+    await claim(sm, cid, "Inc42", 9_000_000, stage="series a")
+    await verify(sm, cid)
+    assert {r.verification_status for r in await rounds(sm)} == {"PARTIALLY_VERIFIED"}
+
+
+async def test_promotions_are_removed_when_the_round_loses_verification_but_manual_rows_stay(sm):
+    cid = await company(sm)
+    wire = await claim(sm, cid, "PR Newswire VC", days_ago=2)
+    await claim(sm, cid, "Entrackr", days_ago=1)
+    async with sm() as s:
+        await s.execute(text("""INSERT INTO company_investor_claims (source_event_id, company_id, name, canonical_name, origin, role)
+            VALUES (:e, :c, 'Accel', 'accel', 'regex', 'lead')"""), {"e": wire, "c": cid})
+        await s.execute(text("INSERT INTO company_founder_claims (source_event_id, company_id, name, canonical_name, origin) VALUES (:e, :c, 'Asha Rao', 'asha rao', 'regex')"),
+                        {"e": wire, "c": cid})
+        manual = (await s.execute(text("INSERT INTO investors (name, canonical_name) VALUES ('Sequoia', 'sequoia') RETURNING id"))).scalar_one()
+        await s.execute(text("INSERT INTO company_investors (company_id, investor_id, role) VALUES (:c, :i, 'existing')"), {"c": cid, "i": manual})
+        await s.execute(text("INSERT INTO founders (company_id, name) VALUES (:c, 'Manual Founder')"), {"c": cid})
+        await s.commit()
+    await verify(sm, cid)
+    async with sm() as s:
+        assert (await s.execute(text("SELECT count(*) FROM company_investors"))).scalar_one() == 2
+        assert (await s.execute(text("SELECT count(*) FROM founders"))).scalar_one() == 2
+        await s.execute(text("UPDATE funding_round_claims SET status = 'rejected' WHERE source_event_id = :e"), {"e": wire})  # the wire claim is withdrawn
+        await s.commit()
+    await verify(sm, cid)
+    assert (await rounds(sm))[0].verification_status == "PARTIALLY_VERIFIED"  # one outlet is left
+    async with sm() as s:
+        assert [r[0] for r in (await s.execute(text("SELECT i.name FROM company_investors ci JOIN investors i ON i.id = ci.investor_id"))).all()] == ["Sequoia"]
+        assert (await s.execute(text("SELECT name FROM founders"))).scalar_one() == "Manual Founder"
+        assert {x for x in (await s.execute(text("SELECT status FROM company_investor_claims"))).scalars()} == {"unverified"}
+    await claim(sm, cid, "Sifted", days_ago=1)  # corroboration returns: the round is VERIFIED again and the promotion is restored
+    await verify(sm, cid)
+    assert (await rounds(sm))[0].verification_status == "VERIFIED"
+
+
+async def test_signal_data_is_refreshed_not_frozen(sm):
+    cid = await company(sm)
+    async with sm() as s:
+        await s.execute(text("INSERT INTO ats_boards (company_id, provider, board_token) VALUES (:c, 'greenhouse', 'zypto')"), {"c": cid})
+        sid = await registry.register_source(s, "greenhouse:zypto", "api")
+        await s.commit()
+
+    async def add_jobs(n, start):
+        async with sm() as s:
+            for i in range(start, start + n):
+                await s.execute(text("""INSERT INTO source_events (source_id, source_event_id, event_type, title, published_at, detected_at)
+                    VALUES (:s, :i, 'job', 'Engineer', :p, :p)"""), {"s": sid, "i": f"s{i}", "p": NOW - timedelta(days=2)})
+            await s.commit()
+
+    async def run(now):
+        async with sm() as s:
+            await correlate_company(s, cid, now)
+            await s.commit()
+
+    await add_jobs(5, 0)
+    await run(NOW)
+    await add_jobs(10, 5)
+    await run(NOW + timedelta(hours=3))
+    async with sm() as s:
+        rows = (await s.execute(text("SELECT data, occurred_at FROM company_signals WHERE signal_type = 'hiring_surge'"))).all()
+    assert len(rows) == 1 and rows[0].data["jobs"] == 15  # same identity, fresh count
+    assert rows[0].data["refreshed_at"].startswith("2026-11-16T15") and rows[0].occurred_at == NOW  # first observation time is kept
