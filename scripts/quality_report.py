@@ -68,6 +68,9 @@ def write_merge_map(d: dict) -> None:
 
     Q.mkdir(parents=True, exist_ok=True)
     f = Q / "identity_merge_map.csv"
+    if n := quality.approvals_in(f):  # decisions are the owner's work: never regenerate over them
+        sys.exit(f"Not written: {f} already holds {n} approval decision(s) in its approve column, and regenerating would erase them. "
+                 "The file is unchanged. Move or rename it yourself if you want a fresh map.")
     cols = ["action", "confidence", "company", "company_id", "survivor", "survivor_id", "cleaned_name", "reason", "rounds", "evidence", "claims", "events", "boards", "signals",
             "alerts", "other", "alerts_by_name", "survivor_rounds", "approve"]
     with f.open("w", newline="") as fh:

@@ -377,3 +377,14 @@ def classifier_metrics(rows: list[dict], classify, label: str = "correct_label")
     fn_got = {g: v for g in sorted({g for (t, g) in conf if t == "funding" and g != "funding"}) if (v := conf[("funding", g)])}
     return {"rows": len(done), "skipped": len(rows) - len(done), "labels": res, "conf": dict(conf), "raw": dict(raw), "fp_cause": fp_cause, "fn_got": fn_got, "wrong": wrong,
             "funding_rows_in_unflagged": sum(n for (t, g), n in raw.items() if t == "funding" and g != "funding")}
+
+
+def approvals_in(path: Path) -> int:
+    """How many rows of a merge-map CSV already carry an owner decision in `approve`. 0 when the file does not exist.
+    A file that cannot be read raises, so the caller never overwrites something it could not inspect."""
+    import csv
+
+    if not path.exists():
+        return 0
+    with path.open(newline="") as fh:
+        return sum(bool((r.get("approve") or "").strip()) for r in csv.DictReader(fh))
