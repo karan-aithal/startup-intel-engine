@@ -203,3 +203,131 @@ async def test_an_excluded_company_leaves_dashboard_lists_and_rankings_but_its_d
     async with sm() as s:
         assert {r["company"] for r in (await quality.ranking(s))["global"]} == {"Real Startup"}
         assert await one(s, "SELECT count(*) FROM funding_rounds") == 2  # hidden, not deleted
+
+
+LOW, HIGH = "00000000-0000-0000-0000-000000000001", "ffffffff-ffff-ffff-ffff-ffffffffffff"
+
+
+async def two_companies_one_round_each(sm):
+    """Survivor holds the low-id round, the source the high-id one: the merge keeps the low id and drops the high one (deterministic)."""
+    async with sm() as s:
+        tgt, src = await company(s, "Dreamteam"), await company(s, "AI-native CRM Dreamteam")
+        a, b = await claim(s, tgt, "Inc42"), await claim(s, src, "Entrackr")
+        for cid, rid, ev in ((tgt, LOW, a), (src, HIGH, b)):
+            await s.execute(text("INSERT INTO funding_rounds (id, company_id) VALUES (CAST(:r AS uuid), CAST(:c AS uuid))"), {"r": rid, "c": cid})
+            await s.execute(text("UPDATE funding_round_claims SET funding_round_id = CAST(:r AS uuid) WHERE source_event_id = CAST(:e AS uuid)"), {"r": rid, "e": ev})
+            await verify_company(s, cid)
+        await s.commit()
+    return tgt, src
+
+
+async def evidence_keys(s):
+    return {tuple(r) for r in (await s.execute(text("SELECT source_event_id::text, evidence_type, supports FROM evidence"))).all()}
+
+
+async def test_merge_preservation_every_claim_and_evidence_survives_and_the_dropped_round_is_snapshotted(sm):
+    tgt, src = await two_companies_one_round_each(sm)
+    async with sm() as s:
+        ev_before, claims_before = await evidence_keys(s), await one(s, "SELECT count(*) FROM funding_round_claims")
+        d = decision("merge", src, "Dreamteam", "AI-native CRM Dreamteam")
+        d["target_id"] = tgt
+        rep = await cm.apply_one(s, d)
+        await s.commit()
+    assert rep["collapsed_rounds"] == 1 and len(rep["rounds_after"]) == 1
+    async with sm() as s:
+        assert ev_before <= await evidence_keys(s)  # nothing lost (it may only gain)
+        assert await one(s, "SELECT count(*) FROM funding_round_claims") == claims_before
+        assert await one(s, "SELECT id::text FROM funding_rounds") == LOW  # the survivor's round id is the one that stays
+        snap = await one(s, "SELECT deleted FROM company_merges")
+        assert [r["id"] for r in snap["funding_rounds"]] == [HIGH]  # the dropped round is kept in the audit row, in full
+        assert snap["funding_rounds"][0]["company_id"] == src  # as it was before the merge
+
+
+async def test_a_merge_that_would_lose_a_manual_investor_link_or_an_alert_link_refuses_and_changes_nothing(sm):
+    tgt, src = await two_companies_one_round_each(sm)
+    async with sm() as s:
+        inv = await one(s, "INSERT INTO investors (name, canonical_name) VALUES ('Some VC', 'some vc') RETURNING id::text")
+        await s.execute(text("INSERT INTO company_investors (company_id, investor_id, funding_round_id, role) VALUES (CAST(:c AS uuid), CAST(:i AS uuid), CAST(:r AS uuid), 'lead')"),
+                        {"c": src, "i": inv, "r": HIGH})  # hand-entered link on the round that would be dropped
+        await s.commit()
+    d = decision("merge", src, "Dreamteam", "AI-native CRM Dreamteam")
+    d["target_id"] = tgt
+    async with sm() as s:
+        with pytest.raises(cm.MergeLoss, match="investor link"):
+            await cm.apply_one(s, d)
+        await s.rollback()
+    async with sm() as s:  # the alert case: link removed, a sent alert points at the round instead
+        await s.execute(text("DELETE FROM company_investors"))
+        await s.execute(text("INSERT INTO alert_deliveries (channel, topic, payload, dedup_key, funding_round_id) VALUES ('telegram', 'Funding', '{}', 'k1', CAST(:r AS uuid))"), {"r": HIGH})
+        await s.commit()
+    async with sm() as s:
+        with pytest.raises(cm.MergeLoss, match="sent alert"):
+            await cm.apply_one(s, d)
+        await s.rollback()
+    async with sm() as s:  # after both refusals: untouched
+        assert await one(s, "SELECT count(*) FROM company_merges") == 0
+        assert await one(s, "SELECT count(*) FROM funding_round_claims WHERE company_id = CAST(:c AS uuid)", c=src) == 1
+        assert await one(s, "SELECT count(*) FROM funding_rounds") == 2 and await one(s, "SELECT excluded_reason IS NULL FROM companies WHERE id = CAST(:i AS uuid)", i=src)
+        assert await one(s, "SELECT funding_round_id::text FROM alert_deliveries") == HIGH
+
+
+async def test_undo_leaves_later_changes_alone(sm):
+    async with sm() as s:
+        tgt, src = await company(s, "Genesis AI"), await company(s, "French robot maker Genesis")
+        await claim(s, src, "Entrackr")
+        d = decision("merge", src, "Genesis AI")
+        d["target_id"] = tgt
+        await cm.apply_one(s, d)
+        later = await claim(s, tgt, "Inc42", amount=9_000_000, stage="series a")  # a legitimate claim that arrives after the merge
+        await s.commit()
+    async with sm() as s:
+        await cm.undo(s, await one(s, "SELECT id::text FROM company_merges"))
+        await s.commit()
+    async with sm() as s:
+        assert await one(s, "SELECT company_id::text FROM funding_round_claims WHERE source_event_id = CAST(:e AS uuid)", e=later) == tgt  # stays with the survivor
+        assert await one(s, "SELECT count(*) FROM funding_round_claims WHERE company_id = CAST(:c AS uuid)", c=src) == 1  # only the moved claim went back
+    async with sm() as s:  # a rename or a hidden state changed by someone since is not overwritten
+        cid = await company(s, "Old Co")
+        await cm.apply_one(s, decision("rename", cid, "New Co", "Old Co"))
+        await s.execute(text("UPDATE companies SET name = 'Newer Co' WHERE id = CAST(:i AS uuid)"), {"i": cid})
+        with pytest.raises(ValueError, match="renamed again"):
+            await cm.undo(s, await one(s, "SELECT id::text FROM company_merges WHERE action = 'rename'"))
+        other = await company(s, "Fundish")
+        await cm.apply_one(s, decision("exclude", other, "a fund", "Fundish"))
+        await s.execute(text("UPDATE companies SET excluded_reason = 'manual: keep hidden' WHERE id = CAST(:i AS uuid)"), {"i": other})
+        with pytest.raises(ValueError, match="hidden state"):
+            await cm.undo(s, await one(s, "SELECT id::text FROM company_merges WHERE company_id = CAST(:i AS uuid)", i=other))
+
+
+async def test_a_failure_midway_leaves_nothing_applied_and_the_audit_matches_what_was_applied(sm, monkeypatch):
+    async with sm() as s:
+        tgt, src, fund = await company(s, "Dreamteam"), await company(s, "AI-native CRM Dreamteam"), await company(s, "Some Fund")
+        await claim(s, src, "Entrackr")
+        await s.commit()
+    ds = [decision("exclude", fund, "a fund", "Some Fund"), {**decision("merge", src, "Dreamteam", "AI-native CRM Dreamteam"), "target_id": tgt}]
+    real = cm.verify_company
+
+    async def boom(*a, **k):
+        raise RuntimeError("verification failed")
+
+    async with sm() as s:  # the CLI's shape: every decision in one transaction, one commit at the end
+        monkeypatch.setattr(cm, "verify_company", boom)
+        with pytest.raises(RuntimeError):
+            for d in ds:
+                await cm.apply_one(s, d)
+            await s.commit()
+        await s.rollback()
+    async with sm() as s:
+        assert await one(s, "SELECT count(*) FROM company_merges") == 0
+        assert await one(s, "SELECT count(*) FROM companies WHERE excluded_reason IS NOT NULL") == 0  # the first decision did not survive the second one's failure
+        assert await one(s, "SELECT count(*) FROM funding_round_claims WHERE company_id = CAST(:c AS uuid)", c=src) == 1
+    monkeypatch.setattr(cm, "verify_company", real)
+    async with sm() as s:
+        for d in ds:
+            await cm.apply_one(s, d)
+        await s.commit()
+    async with sm() as s:
+        rows = (await s.execute(text("SELECT action, company_id::text, target_id::text, old_name, decision, moved FROM company_merges ORDER BY created_at, action"))).all()
+        assert {(r.action, r.company_id, r.old_name, r.decision) for r in rows} == {("exclude", fund, "Some Fund", "yes: exclude"), ("merge", src, "AI-native CRM Dreamteam", "yes: merge")}
+        merge = next(r for r in rows if r.action == "merge")
+        assert merge.target_id == tgt and merge.moved == {"funding_round_claims": [await one(s, "SELECT id::text FROM funding_round_claims")]}  # the audit names the exact row moved

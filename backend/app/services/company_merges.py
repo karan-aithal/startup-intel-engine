@@ -79,6 +79,41 @@ async def resolve(s, decisions: list[dict]) -> list[str]:
     return errors
 
 
+class MergeLoss(RuntimeError):
+    """A merge would lose evidence, an investor link or an alert's round link. The caller's transaction is rolled back."""
+
+
+async def _alerts_on(s, rounds: list[str]) -> dict[str, str]:
+    return {a: r for a, r in (await s.execute(text("SELECT id::text, funding_round_id::text FROM alert_deliveries WHERE funding_round_id = ANY(CAST(:r AS uuid[]))"),
+                                              {"r": rounds})).all()}
+
+
+async def _derived(s, ids: list[str]) -> dict[str, dict[str, dict]]:
+    """{table: {row id: row as json}} for the rounds, evidence and investor links of these companies, to compare around a merge."""
+    q = {"funding_rounds": "SELECT id::text, to_jsonb(t) FROM funding_rounds t WHERE company_id = ANY(CAST(:c AS uuid[]))",
+         "evidence": """SELECT id::text, to_jsonb(t) FROM evidence t WHERE company_id = ANY(CAST(:c AS uuid[]))
+            OR funding_round_id IN (SELECT id FROM funding_rounds WHERE company_id = ANY(CAST(:c AS uuid[])))""",
+         "company_investors": "SELECT id::text, to_jsonb(t) FROM company_investors t WHERE company_id = ANY(CAST(:c AS uuid[]))"}
+    return {t: {i: j for i, j in (await s.execute(text(sql), {"c": ids})).all()} for t, sql in q.items()}
+
+
+async def _check_nothing_lost(before: dict, after: dict, alerts_before: dict[str, str]) -> dict:
+    """Verification may drop a duplicate round and rebuild its evidence and links from the claims. That is fine only if every piece of
+    evidence and every investor link still exists in equivalent form, and no sent alert pointed at a dropped round. Returns what was dropped
+    (saved in the audit row); raises MergeLoss otherwise."""
+    gone = {t: [before[t][i] for i in before[t].keys() - after[t].keys()] for t in before}
+    ev_key = lambda r: (r["source_event_id"], r["evidence_type"], r["supports"])
+    inv_key = lambda r: (r["investor_id"], r["role"])
+    kept_ev, kept_inv = {ev_key(r) for r in after["evidence"].values()}, {inv_key(r) for r in after["company_investors"].values()}
+    lost = [("evidence", r) for r in gone["evidence"] if ev_key(r) not in kept_ev] + [("investor link", r) for r in gone["company_investors"] if inv_key(r) not in kept_inv]
+    if lost:
+        raise MergeLoss(f"would lose {len(lost)} piece(s) of evidence or investor links, e.g. {lost[0][0]} {lost[0][1].get('id')}")
+    cut = [a for a, r in alerts_before.items() if r in {x["id"] for x in gone["funding_rounds"]}]  # the FK sets these to NULL when a round is deleted
+    if cut:
+        raise MergeLoss(f"{len(cut)} sent alert(s) point at a round the merge would collapse")
+    return gone
+
+
 async def _alias(s, company_id: str, alias: str) -> list[str]:
     r = (await s.execute(text("""INSERT INTO company_aliases (company_id, alias, confidence) VALUES (CAST(:c AS uuid), :a, 100)
         ON CONFLICT (company_id, alias) DO NOTHING RETURNING id::text"""), {"c": company_id, "a": alias})).scalars().all()
@@ -98,10 +133,13 @@ async def apply_one(s, d: dict) -> dict:
     moved: dict = {}
     left: dict = {}
     created: dict = {}
+    dropped: dict = {}
     report = {"row": d["row"], "action": d["action"], "company": d["company"], "arg": d["arg"]}
     if d["action"] == "merge":
         tgt = d["target_id"]
         report["rounds_before"] = {"source": await _rounds(s, src), "survivor": await _rounds(s, tgt)}
+        before = await _derived(s, [src, tgt])
+        alerts_before = await _alerts_on(s, list(before["funding_rounds"]))
         for tbl, col in await _ref_tables(s):
             for rid in (await s.execute(text(f"SELECT id::text FROM {tbl} WHERE {col} = CAST(:c AS uuid)"), {"c": src})).scalars().all():  # tbl and col come from the catalogue
                 try:
@@ -116,6 +154,8 @@ async def apply_one(s, d: dict) -> dict:
         await s.execute(text("UPDATE companies SET excluded_reason = :r, updated_at = now() WHERE id = CAST(:i AS uuid)"), {"r": f"merged into {name}", "i": src})
         report["verification"] = await verify_company(s, tgt)  # rebuilds the survivor's rounds: duplicate reports of one round collapse here
         report["rounds_after"] = await _rounds(s, tgt)
+        dropped = await _check_nothing_lost(before, await _derived(s, [src, tgt]), alerts_before)
+        report["collapsed_rounds"] = len(dropped["funding_rounds"])
     elif d["action"] == "rename":
         await s.execute(text("UPDATE companies SET name = :n, canonical_name = :c, updated_at = now() WHERE id = CAST(:i AS uuid)"),
                         {"n": d["arg"], "c": canonical(d["arg"]), "i": src})
@@ -126,10 +166,10 @@ async def apply_one(s, d: dict) -> dict:
                         {"r": "not a company" + (f": {d['arg']}" if d["arg"] else ""), "i": src})
     report["moved"] = {k: len(v) for k, v in moved.items()}
     report["left_behind"] = {k: len(v) for k, v in left.items()}
-    await s.execute(text("""INSERT INTO company_merges (action, company_id, target_id, old_name, old_canonical_name, new_name, decision, moved, left_behind, created)
-        VALUES (:a, CAST(:c AS uuid), CAST(:t AS uuid), :on, :oc, :nn, :d, CAST(:m AS jsonb), CAST(:l AS jsonb), CAST(:cr AS jsonb))"""),
+    await s.execute(text("""INSERT INTO company_merges (action, company_id, target_id, old_name, old_canonical_name, new_name, decision, moved, left_behind, created, deleted)
+        VALUES (:a, CAST(:c AS uuid), CAST(:t AS uuid), :on, :oc, :nn, :d, CAST(:m AS jsonb), CAST(:l AS jsonb), CAST(:cr AS jsonb), CAST(:de AS jsonb))"""),
         {"a": d["action"], "c": src, "t": d.get("target_id"), "on": old.name, "oc": old.canonical_name, "nn": d["arg"] if d["action"] == "rename" else None,
-         "d": d["decision"], "m": json.dumps(moved), "l": json.dumps(left), "cr": json.dumps(created)})
+         "d": d["decision"], "m": json.dumps(moved), "l": json.dumps(left), "cr": json.dumps(created), "de": json.dumps(dropped)})
     return report
 
 
@@ -145,6 +185,11 @@ async def undo(s, merge_id: str) -> dict:
             AND (company_id = ANY(CAST(:c AS uuid[])) OR target_id = ANY(CAST(:c AS uuid[])))"""), {"t": m["created_at"], "i": merge_id, "c": ids})).first():
         raise ValueError("a later change touches the same company: undo that one first")
     src, restored = str(m["company_id"]), {}
+    now = (await s.execute(text("SELECT name, excluded_reason FROM companies WHERE id = CAST(:i AS uuid)"), {"i": src})).one()
+    if m["action"] == "rename" and now.name != m["new_name"]:
+        raise ValueError(f"the company has been renamed again since ({now.name!r}); undo leaves that name alone")
+    if m["action"] != "rename" and not (now.excluded_reason or "").startswith("merged into" if m["action"] == "merge" else "not a company"):
+        raise ValueError("the company's hidden state has been changed since; undo leaves it alone")
     if m["action"] == "merge":
         tgt, moved = str(m["target_id"]), m["moved"] or {}
         # Source-of-truth rows go back as they were. Rounds, evidence and investor links are derived from the claims, so they go back only when

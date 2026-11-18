@@ -222,7 +222,7 @@ def same_round(a: dict, b: dict, window_days: int, c: dict | None = None) -> boo
 async def identity(s) -> dict:
     """Company name problems, a proposed merge map with what each change would move, and round pairs that look like one round."""
     c = cfg()["identity"]
-    comps = await _rows(s, "SELECT id::text AS id, name, canonical_name FROM companies ORDER BY name")
+    comps = await _rows(s, "SELECT id::text AS id, name, canonical_name FROM companies WHERE excluded_reason IS NULL ORDER BY name")  # hidden ones are already decided
     foot = await _footprints(s)
     alerts = {r["name"]: r["n"] for r in await _rows(s, "SELECT payload->>'company' AS name, count(*) AS n FROM alert_deliveries WHERE payload ? 'company' GROUP BY 1")}
     named_investor = {r["n"] for r in await _rows(s, """SELECT canonical_name AS n FROM investors UNION SELECT canonical_name FROM company_investor_claims""")}

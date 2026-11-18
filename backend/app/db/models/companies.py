@@ -271,6 +271,7 @@ class CompanyMerge(Base):
     moved: Mapped[dict] = jsonb()  # {table: [row ids whose company_id moved to the target]}
     left_behind: Mapped[dict] = jsonb()  # {table: [row ids that could not move, e.g. a unique key clash]}
     created: Mapped[dict] = jsonb()  # {table: [row ids this change inserted]}
+    deleted: Mapped[dict] = jsonb()  # {table: [full rows verification dropped while collapsing duplicate rounds], kept for the record}
     created_at = ts()
     undone_at = ts(default_now=False)
     __table_args__ = (CheckConstraint("action in ('merge','rename','exclude')", name="action"),)
