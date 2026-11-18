@@ -31,6 +31,11 @@ ats:
   ashby: [ashby, notion, linear, openai, deel, vercel, supabase, replit, sarvam]
 ats_poll: 1800
 
+# Remote-job boards. Only jobs open to India are kept (backend/app/services/geo.py). Remotive's terms allow 4 requests a day: keep poll >= 21600.
+remote_boards:
+  - {name: Himalayas, kind: himalayas, poll: 1800}
+  - {name: Remotive, kind: remotive, poll: 21600}
+
 # Phase 3: dedicated alerts inbox (IMAP). Stays disabled until IMAP_USER and IMAP_PASSWORD are set.
 imap:
   name: Alerts Inbox

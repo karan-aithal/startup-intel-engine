@@ -88,7 +88,7 @@ async def test_one_email_many_events_and_cross_source_dedup(sm, clean_registry):
     @email_parsers.register("jobs.example.com")
     def p(m, source):
         return [NormalizedEvent(source_name=source, source_event_id=f"{m['uid']}-{i}", event_type="job",
-                                title=f"Job {i}", canonical_url=f"https://careers.example.com/{i}", published_at=m["date"])
+                                title=f"Job {i}", canonical_url=f"https://careers.example.com/{i}", published_at=m["date"], location="Bengaluru")  # job alerts need an India/remote location
                 for i in range(3)]
 
     async with sm() as s:  # same job URL already collected from another source

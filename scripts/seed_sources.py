@@ -17,7 +17,8 @@ from app.services.registry import register_source, set_enabled
 DOCS = {"feed": "robots.txt checked; see docs/phase2-proposals.md",
         "hn": "https://hn.algolia.com/api", "sec": "https://www.sec.gov/search-filings/edgar-application-programming-interfaces",
         "greenhouse": "https://developers.greenhouse.io/job-board.html",
-        "lever": "https://github.com/lever/postings-api", "ashby": "https://developers.ashbyhq.com"}
+        "lever": "https://github.com/lever/postings-api", "ashby": "https://developers.ashbyhq.com",
+        "himalayas": "https://himalayas.app/api", "remotive": "https://remotive.com/api-documentation"}
 
 
 def routes(cfg: dict):
@@ -59,6 +60,9 @@ def routes(cfg: dict):
             docs_url="https://jooblehelpcenter.freshdesk.com/en/support/solutions/articles/60001448238-rest-api-documentation",
             poll_interval_seconds=j["poll"], config={"kind": "jooble", "keywords": j["keywords"], "location": j["location"],
                                                       "pages": j.get("pages", 1), "terms_confirmed": bool(j.get("terms_confirmed"))})
+    for rb in cfg.get("remote_boards", []):
+        yield rb["name"], "api", dict(category="hiring", access_method=f"{rb['name']} public jobs API (remote jobs open to India only)",
+            docs_url=DOCS[rb["kind"]], poll_interval_seconds=rb["poll"], config={"kind": rb["kind"]})
     for provider, tokens in cfg["ats"].items():
         for t in tokens:
             yield f"{provider}:{t}", "api", dict(category="hiring", access_method=f"{provider} job board API",
