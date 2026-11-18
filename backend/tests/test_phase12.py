@@ -191,3 +191,36 @@ def test_merge_map_refuses_to_overwrite_approvals_and_leaves_the_file_untouched(
         qr.write_merge_map(_identity("Different Co"))
     assert "already holds 1 approval" in str(e.value) and "erase" in str(e.value) and "unchanged" in str(e.value)
     assert f.read_bytes() == before  # byte for byte
+
+
+@pytest.mark.parametrize("content", [b"action,company,decision\nmerge,Acme,yes\n", b"\xff\xfe\x00bad,bytes\n\x80\n"])
+def test_merge_map_refuses_a_file_it_cannot_inspect_and_leaves_it_untouched(tmp_path, monkeypatch, content):
+    """No `approve` column (hand-edited header) or not UTF-8: decisions could be hiding there, so never overwrite."""
+    qr = _merge_map_module(tmp_path, monkeypatch)
+    f = tmp_path / "identity_merge_map.csv"
+    f.write_bytes(content)
+    with pytest.raises(SystemExit) as e:
+        qr.write_merge_map(_identity())
+    assert "Not written" in str(e.value) and "unchanged" in str(e.value)
+    assert f.read_bytes() == content
+
+
+def test_merge_map_unreadable_file_is_refused_and_an_empty_file_is_regenerated(tmp_path, monkeypatch):
+    qr = _merge_map_module(tmp_path, monkeypatch)
+    f = tmp_path / "identity_merge_map.csv"
+    f.write_text("")  # zero bytes: nothing to lose
+    qr.write_merge_map(_identity())
+    assert "approve" in f.read_text().splitlines()[0]
+    real_open = quality.Path.open
+
+    def deny_reads(self, mode="r", *a, **k):  # unreadable, works even as root
+        if mode == "r":
+            raise PermissionError("denied")
+        return real_open(self, mode, *a, **k)
+
+    before = f.read_bytes()
+    with monkeypatch.context() as m:
+        m.setattr(quality.Path, "open", deny_reads)
+        with pytest.raises(SystemExit) as e:
+            qr.write_merge_map(_identity("Other Co"))
+    assert "Not written" in str(e.value) and f.read_bytes() == before
