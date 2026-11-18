@@ -41,6 +41,8 @@ classifier_eval:        # scripts/classifier_labels.py and quality.classifier_me
   # An unflagged event that matches one of these is "an unflagged event with a funding cue" (sampling stratum C: where missed funding hides).
   cue_regexes: ['[$€₹£]\s?\d', '\d[\d.,]*\s?(m|mn|million|b|bn|billion|cr|crore|lakh)\b', '\b(rais\w*|fund\w*|financ\w*|invest\w*|series [a-e]|seed|valuation|backed|led by|round|stealth|capital)\b']
   sample: {flagged_funding: 70, flagged_other: 40, unflagged_cue: 70, unflagged_no_cue: 60, seed: 21}
+  # Second draw (fresh events, never in the 202): rows where the assistant's label and the classifier agree, to estimate errors both share. A/C/D = strata above.
+  validation: {seed: 42, draw: {A: 24, C: 28, D: 20}, agree_quota: {A: 12, C: 16, D: 12}}
   # Candidate rule changes, run offline against the labels. NOTHING here is applied to alerts. `*_add` extends the live keyword lists;
   # `negative` is the proposed "not startup funding" path: a title term that turns a funding verdict into a named non-funding one.
   candidates:

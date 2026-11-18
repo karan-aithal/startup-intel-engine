@@ -53,3 +53,28 @@ def test_label_file_is_well_formed():
     assert len({r["event_id"] for r in rows}) == len(rows) and [int(r["row"]) for r in rows] == list(range(1, len(rows) + 1))
     assert {r["suggested"] for r in rows} <= set(labels) | set(negatives) | {"unsure"}
     assert all(float(r["weight"]) >= 1 and r["suggested_reason"] for r in rows)
+
+
+def test_use_suggested_falls_back_per_row_and_marks_it_preliminary(tmp_path, monkeypatch):
+    import importlib
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+    cl = importlib.import_module("classifier_labels")
+    f = tmp_path / "labels.csv"
+    f.write_text("row,suggested,correct_label\n1,funding,none\n2,funding,\n3,,\n")
+    monkeypatch.setattr(cl, "CSV", f)
+    rows, _ = cl.load(True)
+    assert [(r["correct_label"], r["label_source"]) for r in rows] == [("none", "owner"), ("funding", "suggested"), ("", "blank")]
+    assert "1 rows use your labels, 1 rows fall back" in cl.provenance(rows) and "PRELIMINARY" in cl.provenance(rows)
+    rows, _ = cl.load(False)  # without the flag a blank row is skipped, never filled
+    assert [r["label_source"] for r in rows] == ["owner", "blank", "blank"] and cl.provenance(rows) == ""
+
+
+def test_validation_file_is_a_fresh_draw_with_unique_events_and_every_row_labelled():
+    labels, negatives = quality.classifier_labels()
+    val = list(csv.DictReader(LABELS.with_name("classifier_labels_validation.csv").open()))
+    base = {r["event_id"] for r in csv.DictReader(LABELS.open())}
+    assert len({r["event_id"] for r in val}) == len(val) and not ({r["event_id"] for r in val} & base)  # never one of the 202 baseline events
+    assert {r["suggested"] for r in val} <= set(labels) | set(negatives) | {"unsure"} and all(r["suggested_reason"] and ("PRELIMINARY" in r["note"] or r["correct_label"]) for r in val)
+    assert all(r["correct_label"] == "" for r in val) or all("owner" in r["note"] for r in val if r["correct_label"])  # an owner label is never entered silently
