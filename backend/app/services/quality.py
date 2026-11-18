@@ -380,11 +380,17 @@ def classifier_metrics(rows: list[dict], classify, label: str = "correct_label")
 
 
 def approvals_in(path: Path) -> int:
-    """How many rows of a merge-map CSV already carry an owner decision in `approve`. 0 when the file does not exist.
-    A file that cannot be read raises, so the caller never overwrites something it could not inspect."""
+    """How many rows of a merge-map CSV already carry an owner decision in `approve`. 0 when the file is missing or empty.
+    Raises (never returns 0) when the file exists but cannot be inspected: unreadable, not UTF-8, or no `approve` column
+    (a hand-edited header could hide decisions), so the caller never overwrites something it could not check."""
     import csv
 
     if not path.exists():
         return 0
     with path.open(newline="") as fh:
-        return sum(bool((r.get("approve") or "").strip()) for r in csv.DictReader(fh))
+        reader = csv.DictReader(fh)
+        if reader.fieldnames is None:  # zero bytes: nothing to lose
+            return 0
+        if "approve" not in reader.fieldnames:
+            raise ValueError(f"{path} has no 'approve' column")
+        return sum(bool((r.get("approve") or "").strip()) for r in reader)
