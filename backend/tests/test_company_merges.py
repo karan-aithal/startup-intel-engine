@@ -199,6 +199,7 @@ async def test_an_excluded_company_leaves_dashboard_lists_and_rankings_but_its_d
     assert names(await intel.funding("all", "", "", "recent", 50, 0)) == {"Real Startup"}
     o = await intel.overview("all")
     assert {r["name"] for r in o["top_funding"]} == {"Real Startup"} and o["stats"]["verified_rounds"] == 1
+    assert o["stats"]["rounds"] == 1  # the total counts only visible companies too (it used to include the hidden one)
     assert {i["name"] for i in (await intel.companies("", "all", "name", 50, 0))["items"]} == {"Real Startup"}
     async with sm() as s:
         assert {r["company"] for r in (await quality.ranking(s))["global"]} == {"Real Startup"}

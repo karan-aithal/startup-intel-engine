@@ -52,7 +52,7 @@ async def overview(region: Region = "all") -> dict:
         WHERE c.{em} IS NOT NULL AND NOT c.muted AND c.excluded_reason IS NULL AND {_region(region, COMPANY_INDIA)} ORDER BY c.{em} DESC, c.name LIMIT 8""")
     stats = (await _q(f"""SELECT
         (SELECT count(*) FROM companies c WHERE NOT c.muted AND c.excluded_reason IS NULL AND {_region(region, COMPANY_INDIA)}) AS companies,
-        (SELECT count(*) FROM funding_rounds f WHERE {_region(region, ROUND_INDIA)}) AS rounds,
+        (SELECT count(*) FROM funding_rounds f WHERE NOT EXISTS (SELECT 1 FROM companies x WHERE x.id = f.company_id AND x.excluded_reason IS NOT NULL) AND {_region(region, ROUND_INDIA)}) AS rounds,
         (SELECT count(*) FROM funding_rounds f WHERE f.verification_status = 'VERIFIED' AND NOT EXISTS (SELECT 1 FROM companies x WHERE x.id = f.company_id AND x.excluded_reason IS NOT NULL) AND {_region(region, ROUND_INDIA)}) AS verified_rounds,
         (SELECT count(*) FROM {JOB_FROM} WHERE e.event_type = 'job' AND e.published_at > now() - interval '7 days' AND {_region(region, EV_INDIA)}) AS jobs_7d,
         (SELECT count(*) FROM source_registry WHERE enabled) AS sources_enabled,
