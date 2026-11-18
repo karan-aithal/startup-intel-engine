@@ -1,6 +1,5 @@
 """process_event job: classify an event, queue at most one alert for it. Plus alert formatting."""
 import html
-import re
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -11,11 +10,11 @@ from app.core.config import get_settings
 from app.services.claims import rebuild_claims
 from app.services.companies import add_candidate, extract_company
 from app.services.dedup import match_logical
+from app.services.geo import INDIA, wanted
 from app.services.outbox import add_alert
 from app.services.prefilter import classify
 from app.services.queue import enqueue
 
-INDIA = re.compile(r"\b(india|bengaluru|bangalore|mumbai|delhi|gurgaon|gurugram|noida|hyderabad|pune|chennai)\b", re.I)
 JOB_MAX_AGE = timedelta(hours=48)  # older jobs are stored but not alerted, so a first poll doesn't flood Telegram
 LABEL_TITLE = {"funding": "FUNDING", "rumour": "UNVERIFIED / RUMOUR", "hiring": "HIRING"}
 
@@ -48,7 +47,8 @@ async def process_event(s: AsyncSession, event_id: str) -> str:
     alertable = label in LABEL_TITLE
     if label == "hiring" and ev["event_type"] == "job":
         pub = ev["published_at"]
-        alertable = pub is not None and datetime.now(UTC) - pub <= JOB_MAX_AGE
+        in_scope = (ev["raw_metadata"] or {}).get("region") == "india" or wanted(ev["location"], ev["title"])  # India or remote-open-to-India jobs only
+        alertable = in_scope and pub is not None and datetime.now(UTC) - pub <= JOB_MAX_AGE
     duplicate = label in ("funding", "rumour") and ev["event_type"] != "form_d" and await match_logical(s, event_id, label)
     if duplicate:
         alertable = False  # confirmed duplicate of an event already alerted: linked in event_relationships, not re-sent

@@ -18,5 +18,7 @@
 .verified, .healthy, .accepted, .active, .ok { background: #1d4d38; color: var(--ok); }
 .partially_verified, .recovering, .candidate, .pending { background: #4a4220; color: #f2c94c; }
 .contradicted, .unavailable, .expired, .rejected, .unverified, .degraded { background: #4d2424; color: var(--bad); }
+.india { background: #243b5c; color: #8ab4f8; }
+.remote { background: #1d4d38; color: var(--ok); }
 .timeline { list-style: none; padding: 0; margin: 0; li { display: grid; grid-template-columns: 7.5rem 5.5rem minmax(0, 1fr); gap: .75rem; padding: .45rem 0; border-bottom: 1px solid #262a33; overflow-wrap: anywhere; @media (max-width: 520px) { grid-template-columns: minmax(0, 1fr); gap: .1rem; } } time { color: var(--muted); } }
 .flag { color: #f2c94c; font-size: .75rem; margin-right: .4rem; }

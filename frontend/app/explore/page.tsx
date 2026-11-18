@@ -1,0 +1,77 @@
+import { Suspense } from "react";
+import Link from "next/link";
+import styles from "../ui.module.scss";
+import { day, get, href, params, type Sp } from "../lib/api";
+import { Empty, Loading, Pager, Pill } from "../lib/ui";
+
+type Job = {
+  id: string; title: string | null; location: string | null; published_at: string | null; detected_at: string | null; source_url: string | null;
+  source: string; company_id: string | null; company: string | null; india: boolean; remote: boolean;
+};
+type Counts = { all: number; india: number; remote: number };
+type Data = { total: number; items: Job[]; truncated: boolean; counts: Counts; sources: { source: string; jobs: number }[] };
+
+const MODES = [["all", "India + remote"], ["india", "India"], ["remote", "Remote"]] as const;
+const DAYS = [["1", "24h"], ["3", "3d"], ["7", "7d"], ["14", "14d"], ["30", "30d"]] as const;
+
+async function Content({ sp }: { sp: Sp }) {
+  const p = await params(sp);
+  const mode = MODES.find(([m]) => m === p.mode)?.[0] ?? "all";
+  const days = DAYS.find(([d]) => d === p.days)?.[0] ?? "7";
+  const keep = { q: p.q, exclude: p.exclude, location: p.location, source: p.source, days };
+  const d = await get<Data>("/api/explore", { mode, ...keep, offset: p.offset });
+  return (
+    <>
+      <div className={styles.filters}>
+        <div className={styles.tabs}>
+          {MODES.map(([m, label]) => (
+            <Link key={m} href={href("/explore", { ...keep, mode: m })} className={m === mode ? styles.on : ""}>{label} ({d.counts[m]})</Link>
+          ))}
+        </div>
+        <div className={styles.tabs}>
+          {DAYS.map(([v, label]) => (
+            <Link key={v} href={href("/explore", { ...keep, days: v, mode })} className={v === days ? styles.on : ""}>{label}</Link>
+          ))}
+        </div>
+      </div>
+      <form className={styles.filters}>
+        <input type="hidden" name="mode" value={mode} />
+        <input type="hidden" name="days" value={days} />
+        <input name="q" placeholder="Roles: backend, data engineer…" defaultValue={p.q} aria-label="Roles to find" />
+        <input name="exclude" placeholder="Exclude: manager, sales…" defaultValue={p.exclude} aria-label="Exclude" />
+        <input name="location" placeholder="Location: Bengaluru, worldwide…" defaultValue={p.location} aria-label="City or location" />
+        <select name="source" defaultValue={p.source ?? ""} aria-label="Source">
+          <option value="">All sources</option>
+          {d.sources.map((s) => <option key={s.source} value={s.source}>{s.source} ({s.jobs})</option>)}
+        </select>
+        <button>Search</button>
+      </form>
+      {d.items.length ? (
+        <div className={styles.scroll}>
+          <table className={styles.table}><thead><tr><th>Title</th><th>Company</th><th>Location</th><th>Fit</th><th>Posted</th><th>Source</th></tr></thead>
+            <tbody>{d.items.map((j) => (
+              <tr key={j.id}>
+                <td>{j.source_url ? <a href={j.source_url} rel="noopener noreferrer">{j.title ?? "(untitled)"}</a> : (j.title ?? "(untitled)")}</td>
+                <td>{j.company_id ? <Link href={`/companies/${j.company_id}`}>{j.company}</Link> : (j.company ?? "—")}</td>
+                <td>{j.location ?? "—"}</td>
+                <td>{j.india && <Pill v="India" />} {j.remote && <Pill v="Remote" />}</td>
+                <td>{day(j.published_at ?? j.detected_at)}</td><td>{j.source}</td>
+              </tr>
+            ))}</tbody></table>
+        </div>
+      ) : <Empty what="jobs" />}
+      {d.truncated && <p className={styles.muted}>Showing the newest 5000 matching postings; narrow the date window to see older ones.</p>}
+      <Pager path="/explore" p={{ ...p, mode, days }} total={d.total} />
+    </>
+  );
+}
+
+export default function Explore({ searchParams }: { searchParams: Sp }) {
+  return (
+    <main className={styles.page}>
+      <h1>Explore</h1>
+      <p className={styles.muted}>Jobs in India, and remote jobs open to India, from company job boards, Himalayas and Remotive. Remote jobs limited to other countries are hidden.</p>
+      <Suspense fallback={<Loading />}><Content sp={searchParams} /></Suspense>
+    </main>
+  );
+}
