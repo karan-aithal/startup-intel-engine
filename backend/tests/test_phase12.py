@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import text
 
 from app.connectors.feed import FeedAdapter
-from app.services import registry, retention
+from app.services import quality, registry, retention
 
 RSS = """<rss version="2.0"><channel><item><title>Acme raises $5M</title><link>https://e.com/a</link>
 <pubDate>Tue, 17 Nov 2026 08:30:00 +0000</pubDate></item></channel></rss>"""
@@ -143,3 +143,51 @@ def test_india_metrics_weights_and_skips_unsure():
     words = by["candidate: India words in title or summary"]
     assert words["tp"] == 0 and words["fn"] == 2  # "Indian" is not one of the city words, so only the cues rule finds row c
     assert by["candidate: current OR India words and cues (Indian, Rs, crore, rupee sign)"]["recall"] == 1.0
+
+
+# ---- the merge map never overwrites the owner's decisions ----
+
+def _merge_map_module(tmp_path, monkeypatch):
+    import importlib
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+    qr = importlib.import_module("quality_report")
+    monkeypatch.setattr(qr, "Q", tmp_path)
+    return qr
+
+
+def _identity(company="Acme Labs"):
+    item = {"action": "rename", "confidence": "medium", "company": company, "company_id": "1", "survivor": None, "survivor_id": None, "cleaned_name": "Acme",
+            "reason": "description_in_name", "alerts_by_name": 0, "footprint": {"funding_rounds": 1}, "survivor_footprint": {}}
+    return {"items": [item]}
+
+
+def test_merge_map_is_written_when_missing_or_without_approvals(tmp_path, monkeypatch, capsys):
+    qr = _merge_map_module(tmp_path, monkeypatch)
+    f = tmp_path / "identity_merge_map.csv"
+    qr.write_merge_map(_identity())  # file missing: written
+    assert f.exists() and quality.approvals_in(f) == 0
+    qr.write_merge_map(_identity("Other Co"))  # file exists but nothing approved yet: regenerated
+    assert "Other Co" in f.read_text()
+
+
+def test_merge_map_refuses_to_overwrite_approvals_and_leaves_the_file_untouched(tmp_path, monkeypatch):
+    import csv
+
+    qr = _merge_map_module(tmp_path, monkeypatch)
+    f = tmp_path / "identity_merge_map.csv"
+    qr.write_merge_map(_identity())
+    rows = list(csv.DictReader(f.open()))
+    rows[0]["approve"] = "yes: rename to Acme"
+    with f.open("w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=list(rows[0]))
+        w.writeheader()
+        w.writerows(rows)
+    before = f.read_bytes()
+    assert quality.approvals_in(f) == 1
+    with pytest.raises(SystemExit) as e:
+        qr.write_merge_map(_identity("Different Co"))
+    assert "already holds 1 approval" in str(e.value) and "erase" in str(e.value) and "unchanged" in str(e.value)
+    assert f.read_bytes() == before  # byte for byte

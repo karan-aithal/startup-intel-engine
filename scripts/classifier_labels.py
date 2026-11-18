@@ -1,8 +1,10 @@
 """Funding classifier evaluation: draw a labelling sample, then score the live rules and candidate changes against the labels.
 Offline and read-only: nothing here changes the classifier, alerts, scoring or data.
 Usage: cd backend && uv run python ../scripts/classifier_labels.py sample              write docs/classifier_labels.csv (refuses to overwrite it)
+       ... sample-validation                                                          write docs/classifier_labels_validation.csv: a fresh seeded draw for the agreement-row check (refuses to overwrite)
        cd backend && uv run python ../scripts/classifier_labels.py evaluate [-v]       score the live rules against the owner's labels
-       ... evaluate --use-suggested                                                    score against the assistant's PRELIMINARY labels
+       ... add --validation to evaluate or candidates to score docs/classifier_labels_validation.csv instead
+       ... evaluate --use-suggested                                                    blank correct_label falls back to the assistant's PRELIMINARY label (marked, counted)
        ... candidates [--use-suggested] [-v]                                           score candidate rule changes next to the live rules
 
 Labels for `correct_label`: funding (a startup raised or announced a round), rumour (in talks / plans to raise), hiring, spam, none (nothing
@@ -37,20 +39,27 @@ POOL = """SELECT e.id::text AS event_id, r.name AS source, e.title, coalesce(e.c
     WHERE e.event_type = 'article' AND e.title IS NOT NULL ORDER BY e.id"""
 
 
-async def sample() -> None:
-    if CSV.exists():
-        sys.exit(f"{CSV} exists: it may hold labels. Move it away to draw a new sample.")
+async def pool_strata(exclude: set[str]) -> tuple[dict[str, list[dict]], int]:
+    """The article pool in strata A to D, leaving out gold-set events and the event ids in `exclude`."""
     c = quality.cfg()["classifier_eval"]
     cue = [re.compile(x, re.IGNORECASE) for x in c["cue_regexes"]]
     gold_urls = {r["url"] for r in csv.DictReader(GOLD.open())}
     async with get_sessionmaker()() as s:
-        pool = [dict(r) for r in (await s.execute(text(POOL))).mappings() if not ({r["source_url"], r["canonical_url"]} & gold_urls)]
+        pool = [dict(r) for r in (await s.execute(text(POOL))).mappings() if not ({r["source_url"], r["canonical_url"]} & gold_urls) and r["event_id"] not in exclude]
     await get_engine().dispose()
     strata = {"A flagged funding": [], "B flagged rumour/hiring/spam": [], "C unflagged, funding cue": [], "D unflagged, no cue": []}
     for r in pool:
         label = classify(r["title"], r["content"] or None)["label"]
         hit = any(rx.search(f"{r['title']} {r['content']}") for rx in cue)
         strata["A flagged funding" if label == "funding" else "B flagged rumour/hiring/spam" if label != "none" else "C unflagged, funding cue" if hit else "D unflagged, no cue"].append(r)
+    return strata, len(pool)
+
+
+async def sample() -> None:
+    if CSV.exists():
+        sys.exit(f"{CSV} exists: it may hold labels. Move it away to draw a new sample.")
+    c = quality.cfg()["classifier_eval"]
+    strata, size = await pool_strata(set())
     rng, out = random.Random(c["sample"]["seed"]), []
     for (name, group), cap in zip(strata.items(), (c["sample"][k] for k in ("flagged_funding", "flagged_other", "unflagged_cue", "unflagged_no_cue")), strict=True):
         drawn = rng.sample(group, min(len(group), cap))
@@ -65,15 +74,59 @@ async def sample() -> None:
         w = csv.DictWriter(fh, fieldnames=COLS)
         w.writeheader()
         w.writerows(out)
-    print(f"Wrote {CSV}: {len(out)} events from a pool of {len(pool)} (gold-set events left out). Fill correct_label; see this script's header for the labels.")
+    print(f"Wrote {CSV}: {len(out)} events from a pool of {size} (gold-set events left out). Fill correct_label; see this script's header for the labels.")
+
+
+VALIDATION = ROOT / "docs" / "classifier_labels_validation.csv"
+
+
+async def sample_validation() -> None:
+    """A second, fresh draw for checking errors hidden where the assistant and the classifier agree. It leaves out the 202 baseline events and the gold set,
+    shuffles each stratum with a fixed seed and writes `draw` rows per stratum in that order. The assistant labels them in order and keeps the first
+    `agree_quota` rows per stratum where its label and the classifier agree (plus any disagreement met on the way); the rest are discarded unused.
+    Candidate rules are frozen first and are never edited after these rows are read."""
+    if VALIDATION.exists():
+        sys.exit(f"{VALIDATION} exists: it may hold labels. Move it away to draw a new sample.")
+    v = quality.cfg()["classifier_eval"]["validation"]
+    strata, size = await pool_strata({r["event_id"] for r in csv.DictReader(CSV.open())})
+    rng, out = random.Random(v["seed"]), []
+    for name, group in strata.items():
+        k = name[0]
+        if k not in v["draw"]:
+            continue
+        order = rng.sample(group, len(group))[: v["draw"][k]]
+        out += [{"row": 0, "event_id": r["event_id"], "stratum": name, "weight": "1.000", "source": r["source"], "title": r["title"], "content": " ".join(r["content"].split()),
+                 "url": r["url"], "suggested": "", "suggested_reason": "", "correct_label": "", "note": ""} for r in order]
+        print(f"  {name:30} unsampled pool {len(group):4}  drawn {len(order)} (keep the first {v['agree_quota'][k]} agreeing)")
+    for i, r in enumerate(out, 1):
+        r["row"] = i
+    with VALIDATION.open("w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=COLS)
+        w.writeheader()
+        w.writerows(out)
+    print(f"Wrote {VALIDATION}: {len(out)} rows from {size} unsampled events. Rows are in draw order within each stratum; weight is 1 (raw counts only, not a pool estimate).")
 
 
 def load(use_suggested: bool) -> tuple[list[dict], str]:
-    label = "suggested" if use_suggested else "correct_label"
-    rows = list(csv.DictReader(CSV.open()))
-    if not any(r[label].strip() for r in rows):
-        sys.exit(f"No rows have {label} filled in yet ({len(rows)} rows in {CSV.name}).")
-    return rows, label
+    """The owner's correct_label wins. With --use-suggested a blank cell falls back to the assistant's suggested label, and that row is
+    marked label_source=suggested (preliminary, never verified by the owner). Without the flag, blank rows are skipped as before."""
+    path = VALIDATION if "--validation" in sys.argv else CSV
+    rows = list(csv.DictReader(path.open()))
+    if not use_suggested and not any(r["correct_label"].strip() for r in rows):
+        sys.exit(f"No rows have correct_label filled in yet ({len(rows)} rows in {path.name}).")
+    for r in rows:
+        r["label_source"] = "owner" if r["correct_label"].strip() else "suggested" if use_suggested and r["suggested"].strip() else "blank"
+        if r["label_source"] == "suggested":
+            r["correct_label"] = r["suggested"]
+    return rows, "correct_label"
+
+
+def provenance(rows: list[dict]) -> str:
+    n = {k: sum(r["label_source"] == k for r in rows) for k in ("owner", "suggested", "blank")}
+    if not n["suggested"]:
+        return ""
+    return (f"PRELIMINARY: {n['owner']} rows use your labels, {n['suggested']} rows fall back to the assistant's suggested label (not verified by you)"
+            f"{'; ' + str(n['blank']) + ' blank rows skipped' if n['blank'] else ''}. Treat these numbers as provisional.\n")
 
 
 def pct(v) -> str:
@@ -87,7 +140,7 @@ def delta(new, old) -> str:
 def show(m: dict, rows: list[dict], label: str, verbose: bool) -> None:
     labels, _ = quality.classifier_labels()
     unsure = sum(r[label].strip().lower() == "unsure" for r in rows)
-    print(f"{m['rows']} of {len(rows)} rows scored ({unsure} unsure, {len(rows) - m['rows'] - unsure} blank or unrecognised). Numbers describe the whole pool (stratum weights).")
+    print(f"{m['rows']} of {len(rows)} rows scored ({unsure} unsure, {len(rows) - m['rows'] - unsure} blank or unrecognised). " + ("Raw counts, weight 1 per row: a check on agreement rows, NOT a pool estimate." if "--validation" in sys.argv else "Numbers describe the whole pool (stratum weights)."))
     for lab in labels:
         v = m["labels"][lab]
         print(f"  {lab:8} precision {pct(v['precision'])}  recall {pct(v['recall'])}   (right {v['tp']:.1f}, false alarms {v['fp']:.1f}, missed {v['fn']:.1f})")
@@ -102,13 +155,14 @@ def show(m: dict, rows: list[dict], label: str, verbose: bool) -> None:
         print("  " + " " * 26 + "".join(f"{g:>9}" for g in got))
         for t in sorted({t for t, _ in m["raw"]}):
             print(f"  {t:26}" + "".join(f"{int(m['raw'].get((t, g), 0)):>9}" for g in got))
+        src = {r["title"]: r.get("label_source") for r in rows}
         for w in m["wrong"]:
-            print(f"  want {w['want']:24} got {w['got']:8} {w['title']}")
+            print(f"  want {w['want']:24} got {w['got']:8} {w['title']}" + ("   [preliminary label]" if src.get(w["title"]) == "suggested" else ""))
 
 
 def evaluate() -> None:
     rows, label = load("--use-suggested" in sys.argv)
-    print("PRELIMINARY: scored against the assistant's suggested labels, not yours.\n" if label == "suggested" else "", end="")
+    print(provenance(rows), end="")
     m = quality.classifier_metrics(rows, classify, label)
     show(m, rows, label, "-v" in sys.argv)
     if any(r[label].strip().lower() == "unsure" for r in rows):  # the answer must hold whichever way the unsure rows are decided
@@ -126,9 +180,14 @@ def held_out(name: str) -> str:
 
 def candidates() -> None:
     rows, label = load("--use-suggested" in sys.argv)
-    print("PRELIMINARY: scored against the assistant's suggested labels, not yours. Nothing below is applied to alerts.\n" if label == "suggested" else "Nothing below is applied to alerts.\n", end="")
+    print(provenance(rows) + "Nothing below is applied to alerts.\n", end="")
+    import hashlib
+    import json
+    print("Candidate rules fingerprint (sha256 of the candidates block in config/quality.yaml): "
+          + hashlib.sha256(json.dumps(quality.cfg()["classifier_eval"]["candidates"], sort_keys=True).encode()).hexdigest()[:12] + (" [validation file]" if "--validation" in sys.argv else " [baseline file]"))
     base = quality.classifier_metrics(rows, quality.candidate_classifier("current"), label)
-    print("The candidates were written after reading this sample, so its numbers flatter them; the gold-set column is the fair check.")
+    print("This sample was drawn after the candidates were frozen: it is an independent check, but its rows are raw counts, not a pool estimate." if "--validation" in sys.argv
+          else "The candidates were written after reading this sample, so its numbers flatter them; the gold-set column is the fair check.")
     print(f"{'current rules':32} funding precision {pct(base['labels']['funding']['precision'])} recall {pct(base['labels']['funding']['recall'])}   {held_out('current')}")
     b = base["labels"]["funding"]
     for name in quality.cfg()["classifier_eval"]["candidates"]:
@@ -147,4 +206,4 @@ def candidates() -> None:
 
 
 if __name__ == "__main__":
-    {"sample": lambda: asyncio.run(sample()), "evaluate": evaluate, "candidates": candidates}.get(sys.argv[1] if len(sys.argv) > 1 else "", lambda: sys.exit(__doc__))()
+    {"sample": lambda: asyncio.run(sample()), "sample-validation": lambda: asyncio.run(sample_validation()), "evaluate": evaluate, "candidates": candidates}.get(sys.argv[1] if len(sys.argv) > 1 else "", lambda: sys.exit(__doc__))()
