@@ -1,16 +1,16 @@
 action,confidence,company,company_id,survivor,survivor_id,cleaned_name,reason,rounds,evidence,claims,events,boards,signals,alerts,other,alerts_by_name,survivor_rounds,approve
-merge,high,AI-native CRM Dreamteam,c462b1d4-f885-401a-a759-69b5f2ea6ea8,Dreamteam,e8c3a5a3-0de6-4478-a550-5664a8553cc2,Dreamteam,description_in_name,0,0,1,0,0,0,0,0,0,1,
-not_a_company,medium,BITS Pilani,ef49f35f-28bb-42fe-a491-e2781f6fea37,,,,investor_or_institution,0,0,1,0,0,0,0,0,0,,
-not_a_company,medium,Canonicus Capital,3d663d50-c248-4d82-a1da-9863a5693df6,,,,investor_or_institution,1,2,1,0,0,0,0,1,0,,
-not_a_company,medium,Daksham Growth Ventures,f165188c-041d-4257-8973-22b48d05299e,,,,investor_or_institution,1,1,4,0,0,0,0,0,0,,
-rename,medium,Denmark’s Commit Biologics,0a30a941-aa01-4d9d-9c19-a4e67ff54e69,,,Commit Biologics,description_in_name,1,1,2,0,0,0,0,0,0,,
-merge,medium,French robot maker Genesis,db691fc9-5b84-45ec-bcf3-82833efbaf77,Genesis AI,6d278289-41ab-4eaf-9540-7fffa5918a0d,Genesis,description_in_name,0,0,1,0,0,0,0,0,0,1,
-review_name,review,Freshworks alums,244adb11-875f-4b82-be00-e19368612e28,,,,description_in_name,1,1,1,0,0,0,0,0,0,,
-not_a_company,medium,Gemspring Capital,7b60f849-6424-4ec4-aaa6-beba117dbec0,,,,investor_or_institution,0,0,1,0,0,0,0,0,0,,
-merge,high,Helsing backer Plural,35f5f378-261b-45e1-9c28-3e8280e90b7d,Plural,7c3733af-c2c2-437c-ba04-7dd73ad0fd56,Plural,description_in_name,0,0,1,0,0,0,0,0,0,0,
-not_a_company,medium,Nexedge Capital,b67d99b7-c9e9-404e-b583-2fd7ce09a929,,,,investor_or_institution,1,1,5,0,0,0,0,0,0,,
-review_name,review,Numa Triples ARR,955bc375-d0c6-41d1-a317-90ba8d7d1daa,,,,headline_fragment,1,1,2,0,0,0,0,0,0,,
-not_a_company,low,Plural,7c3733af-c2c2-437c-ba04-7dd73ad0fd56,,,,also_named_as_investor,0,1,2,0,0,0,0,1,0,,
-rename,medium,Profitable French InsurTech Previsia,d8d64372-caa1-4aee-9698-e2d087be6647,,,Previsia,description_in_name,1,1,3,0,0,0,0,0,0,,
-review_name,review,Sri Lankan firm,70fcc3af-4c91-42ab-a35e-1012d0b1aada,,,,description_in_name,0,0,1,0,0,0,0,0,0,,
-merge,high,VC Firm Plural,4f0c8893-a643-42e8-b6ab-b4487db8d6fc,Plural,7c3733af-c2c2-437c-ba04-7dd73ad0fd56,Plural,description_in_name,0,0,1,0,0,0,0,0,0,0,
+merge,high,AI-native CRM Dreamteam,c462b1d4-f885-401a-a759-69b5f2ea6ea8,Dreamteam,e8c3a5a3-0de6-4478-a550-5664a8553cc2,Dreamteam,description_in_name,0,0,1,0,0,0,0,0,0,1,"yes: merge into Dreamteam. When implemented, dedupe the duplicate $53M round without losing its evidence or claims"
+not_a_company,medium,BITS Pilani,ef49f35f-28bb-42fe-a491-e2781f6fea37,,,,investor_or_institution,0,0,1,0,0,0,0,0,0,,"yes: not_a_company, a university (endowment donations, not a funding round)"
+not_a_company,medium,Canonicus Capital,3d663d50-c248-4d82-a1da-9863a5693df6,,,,investor_or_institution,1,2,1,0,0,0,0,1,0,,"yes: not_a_company, an investment fund (first close of a special situations fund)"
+not_a_company,medium,Daksham Growth Ventures,f165188c-041d-4257-8973-22b48d05299e,,,,investor_or_institution,1,1,4,0,0,0,0,0,0,,"yes: not_a_company, an investment fund (first close of a maiden fund)"
+rename,medium,Denmark’s Commit Biologics,0a30a941-aa01-4d9d-9c19-a4e67ff54e69,,,Commit Biologics,description_in_name,1,1,2,0,0,0,0,0,0,,yes: rename to Commit Biologics. Keep its round
+merge,medium,French robot maker Genesis,db691fc9-5b84-45ec-bcf3-82833efbaf77,Genesis AI,6d278289-41ab-4eaf-9540-7fffa5918a0d,Genesis,description_in_name,0,0,1,0,0,0,0,0,0,1,"yes: merge into Genesis AI. When implemented, preserve the Genesis AI round and its supporting evidence"
+review_name,review,Freshworks alums,244adb11-875f-4b82-be00-e19368612e28,,,,description_in_name,1,1,1,0,0,0,0,0,0,,"yes: merge into Dreamteam (changed from review_name). When implemented, dedupe the duplicate $53M round without losing its evidence or claims"
+not_a_company,medium,Gemspring Capital,7b60f849-6424-4ec4-aaa6-beba117dbec0,,,,investor_or_institution,0,0,1,0,0,0,0,0,0,,"yes: not_a_company, a PE firm (buyout fund close)"
+merge,high,Helsing backer Plural,35f5f378-261b-45e1-9c28-3e8280e90b7d,Plural,7c3733af-c2c2-437c-ba04-7dd73ad0fd56,Plural,description_in_name,0,0,1,0,0,0,0,0,0,0,"yes: not_a_company (changed from merge), Plural is a VC fund"
+not_a_company,medium,Nexedge Capital,b67d99b7-c9e9-404e-b583-2fd7ce09a929,,,,investor_or_institution,1,1,5,0,0,0,0,0,0,,"no: keep as a company. Keep its expired round untouched; investigate the 25 Aug vs November article date separately, do not renew or modify the round"
+review_name,review,Numa Triples ARR,955bc375-d0c6-41d1-a317-90ba8d7d1daa,,,,headline_fragment,1,1,2,0,0,0,0,0,0,,yes: rename to Numa (changed from review_name). Keep its Series C round
+not_a_company,low,Plural,7c3733af-c2c2-437c-ba04-7dd73ad0fd56,,,,also_named_as_investor,0,1,2,0,0,0,0,1,0,,"yes: not_a_company, Plural is a VC fund not an operating company. Low-confidence evidence stays recorded; not independently verified"
+rename,medium,Profitable French InsurTech Previsia,d8d64372-caa1-4aee-9698-e2d087be6647,,,Previsia,description_in_name,1,1,3,0,0,0,0,0,0,,yes: rename to Previsia
+review_name,review,Sri Lankan firm,70fcc3af-4c91-42ab-a35e-1012d0b1aada,,,,description_in_name,0,0,1,0,0,0,0,0,0,,"yes: not_a_company (changed from review_name), a contract win with no round"
+merge,high,VC Firm Plural,4f0c8893-a643-42e8-b6ab-b4487db8d6fc,Plural,7c3733af-c2c2-437c-ba04-7dd73ad0fd56,Plural,description_in_name,0,0,1,0,0,0,0,0,0,0,"yes: not_a_company (changed from merge), Plural is a VC fund"
