@@ -65,13 +65,13 @@ async def add_candidate(s: AsyncSession, name: str, event_id: str | None = None,
 async def match_company(s: AsyncSession, name: str) -> tuple[str | None, int]:
     """Identity resolution: exact alias/canonical first, then trigram similarity. Returns (company_id, confidence)."""
     c = canonical(name)
-    r = (await s.execute(text("""SELECT id, 100 AS conf FROM companies WHERE canonical_name = :c
-        UNION ALL SELECT company_id, confidence FROM company_aliases WHERE alias = :c
-        ORDER BY 2 DESC LIMIT 1"""), {"c": c})).first()
+    r = (await s.execute(text("""SELECT id, 100 AS conf, 0 AS pref FROM companies WHERE canonical_name = :c
+        UNION ALL SELECT company_id, confidence, 1 FROM company_aliases WHERE alias = :c
+        ORDER BY 2 DESC, 3 DESC LIMIT 1"""), {"c": c})).first()  # on a tie the alias wins: a merged-away company keeps its row, its alias points at the survivor
     if r:
         return str(r.id), r.conf
     r = (await s.execute(text("""SELECT id, round(similarity(canonical_name, :s) * 100)::int AS conf FROM companies
-        WHERE similarity(canonical_name, :s) >= :sim ORDER BY 2 DESC LIMIT 1"""), {"s": c, "sim": quality_cfg()["entity_resolution"]["similarity"]})).first()
+        WHERE similarity(canonical_name, :s) >= :sim AND coalesce(excluded_reason, '') NOT LIKE 'merged into%' ORDER BY 2 DESC LIMIT 1"""), {"s": c, "sim": quality_cfg()["entity_resolution"]["similarity"]})).first()
     return (str(r.id), r.conf) if r else (None, 0)
 
 

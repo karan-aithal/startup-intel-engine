@@ -45,15 +45,15 @@ async def overview(region: Region = "all") -> dict:
     sc = "score_india" if region == "india" else "score_global"
     rounds = await _q(f"""SELECT f.id, f.company_id, c.name, f.stage, f.amount_usd, f.amount_original, f.currency, f.announced_at, f.verification_status, f.confidence, f.{sc} AS score
         FROM funding_rounds f JOIN companies c ON c.id = f.company_id
-        WHERE f.verification_status IN ('VERIFIED', 'PARTIALLY_VERIFIED') AND {_region(region, ROUND_INDIA)}
+        WHERE f.verification_status IN ('VERIFIED', 'PARTIALLY_VERIFIED') AND c.excluded_reason IS NULL AND {_region(region, ROUND_INDIA)}
         ORDER BY f.{sc} DESC NULLS LAST, f.announced_at DESC NULLS LAST LIMIT 8""")
     em = "emerging_india" if region == "india" else "emerging_global"
     emerging = await _q(f"""SELECT c.id, c.name, c.{em} AS score FROM companies c
-        WHERE c.{em} IS NOT NULL AND NOT c.muted AND {_region(region, COMPANY_INDIA)} ORDER BY c.{em} DESC, c.name LIMIT 8""")
+        WHERE c.{em} IS NOT NULL AND NOT c.muted AND c.excluded_reason IS NULL AND {_region(region, COMPANY_INDIA)} ORDER BY c.{em} DESC, c.name LIMIT 8""")
     stats = (await _q(f"""SELECT
-        (SELECT count(*) FROM companies c WHERE NOT c.muted AND {_region(region, COMPANY_INDIA)}) AS companies,
+        (SELECT count(*) FROM companies c WHERE NOT c.muted AND c.excluded_reason IS NULL AND {_region(region, COMPANY_INDIA)}) AS companies,
         (SELECT count(*) FROM funding_rounds f WHERE {_region(region, ROUND_INDIA)}) AS rounds,
-        (SELECT count(*) FROM funding_rounds f WHERE f.verification_status = 'VERIFIED' AND {_region(region, ROUND_INDIA)}) AS verified_rounds,
+        (SELECT count(*) FROM funding_rounds f WHERE f.verification_status = 'VERIFIED' AND NOT EXISTS (SELECT 1 FROM companies x WHERE x.id = f.company_id AND x.excluded_reason IS NOT NULL) AND {_region(region, ROUND_INDIA)}) AS verified_rounds,
         (SELECT count(*) FROM {JOB_FROM} WHERE e.event_type = 'job' AND e.published_at > now() - interval '7 days' AND {_region(region, EV_INDIA)}) AS jobs_7d,
         (SELECT count(*) FROM source_registry WHERE enabled) AS sources_enabled,
         (SELECT count(*) FROM source_registry WHERE enabled AND health_status <> 'HEALTHY') AS sources_unhealthy"""))[0]
@@ -70,7 +70,7 @@ async def companies(q: str = "", region: Region = "all", sort: Literal["emerging
         (SELECT count(*) FROM funding_rounds f WHERE f.company_id = c.id) AS rounds,
         (SELECT max(f.announced_at) FROM funding_rounds f WHERE f.company_id = c.id) AS last_round_at,
         count(*) OVER () AS total
-        FROM companies c WHERE NOT c.muted AND (:q = '' OR c.name ILIKE :p) AND {_region(region, COMPANY_INDIA)}
+        FROM companies c WHERE NOT c.muted AND c.excluded_reason IS NULL AND (:q = '' OR c.name ILIKE :p) AND {_region(region, COMPANY_INDIA)}
         ORDER BY {order} LIMIT :l OFFSET :o""", q=q, p=_like(q), l=limit, o=offset)
     return {"total": rows[0]["total"] if rows else 0, "items": [{k: v for k, v in r.items() if k != "total"} for r in rows]}
 
@@ -119,7 +119,7 @@ async def funding(region: Region = "all", status: str = "", stage: str = "", sor
     rows = await _q(f"""SELECT f.id, f.company_id, c.name AS company, f.stage, f.amount_usd, f.amount_original, f.currency, f.announced_at, f.first_detected_at,
         f.verification_status, f.confidence, f.is_rumour, f.risk_flags, f.score_global, f.score_india, {ROUND_INDIA} AS india, count(*) OVER () AS total
         FROM funding_rounds f JOIN companies c ON c.id = f.company_id
-        WHERE (:st = '' OR f.verification_status = :st) AND (:sg = '' OR lower(f.stage) = lower(:sg)) AND {_region(region, ROUND_INDIA)}
+        WHERE c.excluded_reason IS NULL AND (:st = '' OR f.verification_status = :st) AND (:sg = '' OR lower(f.stage) = lower(:sg)) AND {_region(region, ROUND_INDIA)}
         ORDER BY {order} LIMIT :l OFFSET :o""", st=status.upper(), sg=stage, l=limit, o=offset)
     return {"total": rows[0]["total"] if rows else 0, "items": [{k: v for k, v in r.items() if k != "total"} for r in rows]}
 
@@ -201,7 +201,7 @@ async def search(q: str = Query(..., min_length=2, max_length=100), region: Regi
     p = _like(q)
     return {
         "companies": await _q(f"""SELECT c.id, c.name, c.website_url, similarity(c.name, :q) AS sim FROM companies c
-            WHERE NOT c.muted AND (c.name ILIKE :p OR similarity(c.name, :q) > 0.3) AND {_region(region, COMPANY_INDIA)} ORDER BY sim DESC, c.name LIMIT 20""", q=q, p=p),
+            WHERE NOT c.muted AND c.excluded_reason IS NULL AND (c.name ILIKE :p OR similarity(c.name, :q) > 0.3) AND {_region(region, COMPANY_INDIA)} ORDER BY sim DESC, c.name LIMIT 20""", q=q, p=p),
         "events": await _q(f"""SELECT e.id, e.event_type, e.title, e.source_url, e.published_at, e.company_name, e.location, r.name AS source
             FROM source_events e JOIN source_registry r ON r.id = e.source_id
             WHERE (e.title ILIKE :p OR e.company_name ILIKE :p OR e.content ILIKE :p) AND {_region(region, EV_INDIA)}

@@ -203,6 +203,8 @@ async def _write_round(s: AsyncSession, company_id: str, p: dict, india_company:
             VALUES (:c, :st, :am, :cur, :usd, :an, :det, :vs, :cf, :ru, CAST(:fl AS jsonb), :ik, :si, :sg,
                     CASE WHEN :isv THEN now() END) RETURNING id"""), row)).scalar_one()
     else:
+        if rounds[1:]:  # two rounds are becoming one: free their identity keys first, or the survivor cannot take the key a duplicate still holds
+            await s.execute(text("UPDATE funding_rounds SET identity_key = NULL WHERE id = ANY(CAST(:o AS uuid[]))"), {"o": [str(r) for r in rounds[1:]]})
         await s.execute(text(f"UPDATE funding_rounds SET {sql_vals} WHERE id = :id"), {**row, "id": rid})
         for other in rounds[1:]:  # claims that used to form two rounds now form one: keep the oldest id
             for tbl in ("evidence", "company_investors"):

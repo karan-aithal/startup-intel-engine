@@ -38,6 +38,7 @@ class Company(Base, Timestamps):
     hot_until = ts(default_now=False)  # newly funded: polled more often for 90 days
     watched: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     muted: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    excluded_reason: Mapped[str | None] = mapped_column(Text)  # set only by services/company_merges (audited, undoable): hidden from dashboard lists and rankings
     meta: Mapped[dict] = jsonb()
     emerging_global: Mapped[int | None] = mapped_column(SmallInteger)  # E score without the India term
     emerging_india: Mapped[int | None] = mapped_column(SmallInteger)
@@ -254,3 +255,22 @@ class CompanyDiscoveryCandidate(Base, Timestamps):
     evidence: Mapped[dict] = jsonb()
     __table_args__ = (Index("uq_discovery_candidates_event", "source_event_id", unique=True,
                             postgresql_where=text("source_event_id is not null")),)
+
+
+class CompanyMerge(Base):
+    """Audit of every identity change (merge, rename, exclude) so each can be undone. Rows are never deleted."""
+    __tablename__ = "company_merges"
+    id: Mapped[uuid.UUID] = pk()
+    action: Mapped[str] = mapped_column(String(10))
+    company_id: Mapped[uuid.UUID] = uuid_fk("companies.id", ondelete="NO ACTION")  # the company changed (merge: the source)
+    target_id: Mapped[uuid.UUID | None] = uuid_fk("companies.id", nullable=True, ondelete="NO ACTION")  # merge: the survivor
+    old_name: Mapped[str] = mapped_column(Text)
+    old_canonical_name: Mapped[str] = mapped_column(Text)
+    new_name: Mapped[str | None] = mapped_column(Text)
+    decision: Mapped[str | None] = mapped_column(Text)  # the owner's approve cell, verbatim
+    moved: Mapped[dict] = jsonb()  # {table: [row ids whose company_id moved to the target]}
+    left_behind: Mapped[dict] = jsonb()  # {table: [row ids that could not move, e.g. a unique key clash]}
+    created: Mapped[dict] = jsonb()  # {table: [row ids this change inserted]}
+    created_at = ts()
+    undone_at = ts(default_now=False)
+    __table_args__ = (CheckConstraint("action in ('merge','rename','exclude')", name="action"),)

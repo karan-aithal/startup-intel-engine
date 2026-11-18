@@ -96,7 +96,7 @@ DUP_ALERTS = """SELECT lower(btrim(b.payload->>'company')) AS company, b.payload
 
 RANKING = """SELECT f.id::text AS id, c.name AS company, f.stage, f.verification_status AS status, f.score_global, f.score_india
     FROM funding_rounds f JOIN companies c ON c.id = f.company_id
-    WHERE {col} IS NOT NULL ORDER BY {col} DESC, f.id LIMIT :n"""
+    WHERE {col} IS NOT NULL AND c.excluded_reason IS NULL ORDER BY {col} DESC, f.id LIMIT :n"""
 
 
 async def _rows(s, sql: str, **p) -> list[dict]:
