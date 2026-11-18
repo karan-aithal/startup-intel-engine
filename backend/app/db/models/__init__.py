@@ -2,6 +2,7 @@ from app.db.models.companies import (  # noqa: F401
     AtsBoard,
     Company,
     CompanyAlias,
+    CompanyMerge,
     CompanyDiscoveryCandidate,
     CompanyDomain,
     CompanyInvestor,
