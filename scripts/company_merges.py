@@ -2,7 +2,7 @@
 Usage: cd backend && uv run python ../scripts/company_merges.py [--apply] [--undo ID] [--list]
   (no flag)  run every approved change inside one transaction, print what it would move and how rounds collapse, then ROLL BACK
   --apply    the same, committed. Refuses unless a database backup from the last 2 hours exists (run scripts/backup.sh first)
-  --undo ID  reverse one audited change (newest first when changes share a company)
+  --undo ID  preview reversing one audited change (rolled back); add --apply to commit it (same backup rule). Newest first when changes share a company
   --list     show the audit trail
 Nothing is deleted: merged-away and not-a-company rows are only hidden. No alert, score or classifier setting is touched."""
 import asyncio
@@ -45,14 +45,19 @@ async def main() -> int:
                 for m in (await s.execute(text("SELECT id, action, old_name, new_name, created_at, undone_at FROM company_merges ORDER BY created_at"))).all():
                     print(m.id, m.action, m.old_name, "->", m.new_name or "", f"{m.created_at:%Y-%m-%d %H:%M}", "UNDONE" if m.undone_at else "")
                 return 0
-            if "--undo" in sys.argv:
-                print(await cm.undo(s, sys.argv[sys.argv.index("--undo") + 1]))
-                await s.commit()
-                return 0
             apply = "--apply" in sys.argv
             if apply and not (b := fresh_backup()):
                 print("Refused: no database backup from the last 2 hours. Run scripts/backup.sh first.")
                 return 1
+            if "--undo" in sys.argv:
+                print(await cm.undo(s, sys.argv[sys.argv.index("--undo") + 1]))
+                if apply:
+                    await s.commit()
+                    print(f"Undone and committed (backup {b.name}).")
+                else:
+                    await s.rollback()
+                    print("Preview only, rolled back. Re-run with --apply to undo for real.")
+                return 0
             decisions = cm.read_decisions(MAP)
             errors = await cm.resolve(s, decisions)
             if errors:

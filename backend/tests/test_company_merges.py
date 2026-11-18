@@ -158,7 +158,6 @@ async def test_stale_or_unmatched_maps_stop_before_anything_is_written_and_undo_
         assert await cm.resolve(s, [decision("merge", cid, "Nobody Inc", "Real Name")]) != []
         a = decision("exclude", cid, "x", "Real Name")
         await cm.apply_one(s, a)
-        await s.execute(text("UPDATE company_merges SET created_at = created_at - interval '1 hour'"))
         await cm.apply_one(s, {**a, "action": "rename", "arg": "Newer Name"})  # a later change on the same company
         first = await one(s, "SELECT id::text FROM company_merges WHERE action = 'exclude'")
         with pytest.raises(ValueError, match="later change"):
@@ -298,6 +297,17 @@ async def test_undo_leaves_later_changes_alone(sm):
         await s.execute(text("UPDATE companies SET excluded_reason = 'manual: keep hidden' WHERE id = CAST(:i AS uuid)"), {"i": other})
         with pytest.raises(ValueError, match="hidden state"):
             await cm.undo(s, await one(s, "SELECT id::text FROM company_merges WHERE company_id = CAST(:i AS uuid)", i=other))
+
+
+async def test_changes_of_one_run_get_distinct_times_so_undo_order_is_enforced_within_a_batch(sm):
+    async with sm() as s:
+        cid = await company(s, "Batch Co")
+        await cm.apply_one(s, decision("exclude", cid, "x", "Batch Co"))
+        await cm.apply_one(s, {**decision("exclude", cid, "x", "Batch Co"), "action": "rename", "arg": "Batch Renamed"})  # same transaction
+        t = (await s.execute(text("SELECT count(DISTINCT created_at) FROM company_merges"))).scalar_one()
+        assert t == 2
+        with pytest.raises(ValueError, match="later change"):
+            await cm.undo(s, await one(s, "SELECT id::text FROM company_merges WHERE action = 'exclude'"))
 
 
 async def test_a_failure_midway_leaves_nothing_applied_and_the_audit_matches_what_was_applied(sm, monkeypatch):

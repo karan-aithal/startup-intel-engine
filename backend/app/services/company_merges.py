@@ -166,8 +166,8 @@ async def apply_one(s, d: dict) -> dict:
                         {"r": "not a company" + (f": {d['arg']}" if d["arg"] else ""), "i": src})
     report["moved"] = {k: len(v) for k, v in moved.items()}
     report["left_behind"] = {k: len(v) for k, v in left.items()}
-    await s.execute(text("""INSERT INTO company_merges (action, company_id, target_id, old_name, old_canonical_name, new_name, decision, moved, left_behind, created, deleted)
-        VALUES (:a, CAST(:c AS uuid), CAST(:t AS uuid), :on, :oc, :nn, :d, CAST(:m AS jsonb), CAST(:l AS jsonb), CAST(:cr AS jsonb), CAST(:de AS jsonb))"""),
+    await s.execute(text("""INSERT INTO company_merges (action, company_id, target_id, old_name, old_canonical_name, new_name, decision, moved, left_behind, created, deleted, created_at)
+        VALUES (:a, CAST(:c AS uuid), CAST(:t AS uuid), :on, :oc, :nn, :d, CAST(:m AS jsonb), CAST(:l AS jsonb), CAST(:cr AS jsonb), CAST(:de AS jsonb), clock_timestamp())"""),  # not now(): changes of one run must have distinct times so undo can tell which is later
         {"a": d["action"], "c": src, "t": d.get("target_id"), "on": old.name, "oc": old.canonical_name, "nn": d["arg"] if d["action"] == "rename" else None,
          "d": d["decision"], "m": json.dumps(moved), "l": json.dumps(left), "cr": json.dumps(created), "de": json.dumps(dropped)})
     return report
