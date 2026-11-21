@@ -26,6 +26,7 @@ The full specification is in [PROMPT.md](PROMPT.md). Decisions made so far are i
 | Jobs J0 | Baseline check on real data, Himalayas and Remotive enabled, gaps measured | Awaiting acceptance (decisions 94, 97, 98) |
 | Jobs J1 | Write guard and the job record (`job_postings`, migration 0011) | Applied to the live database 2026-11-18 (migration 0011, 7184 records backfilled); awaiting acceptance (decisions 100, 101) |
 | Jobs J2 | Keka, Darwinbox, TurboHire, Zoho Recruit and SmartRecruiters boards; workplace type; small-board flag; aggregator list; fetch guard | Built and tested (312 tests), no migration; Darwinbox live smoke blocked by Cloudflare (decisions 102 to 105) |
+| Jobs J3 | Jobicy, We Work Remotely and Working Nomads boards | Built, tested (318 tests) and enabled live 2026-11-21 (decision 106) |
 
 The work goes one phase at a time. Each phase ends with a report and waits for an explicit go.
 
