@@ -139,10 +139,11 @@ async def hiring(region: Region = "all", q: str = "", company_id: str = "",
 @router.get("/explore")
 async def explore(mode: Literal["all", "india", "remote"] = "all", q: str = "", exclude: str = "", location: str = "", source: str = "",
                   days: int = Query(7, ge=1, le=30), limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
-                  sort: Literal["newest", "fit", "company", "funded"] = "newest", status: Literal["open", "all"] = "open") -> dict:
+                  sort: Literal["newest", "fit", "company", "funded"] = "newest", status: Literal["open", "all"] = "open",
+                  tracked: Literal["show", "hide"] = "show") -> dict:
     """India and remote-open-to-India jobs only. The query lives in services.explore.search so saved searches (J6) run the very same rule."""
     async with get_sessionmaker()() as s:
-        return await explore_search(s, mode, q, exclude, location, source, days, limit, offset, sort, status)
+        return await explore_search(s, mode, q, exclude, location, source, days, limit, offset, sort, status, tracked == "hide")
 
 
 @router.get("/discovery")
