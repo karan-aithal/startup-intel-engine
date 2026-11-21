@@ -18,6 +18,8 @@
 .verified, .healthy, .accepted, .active, .ok, .live, .strong { background: #1d4d38; color: var(--ok); }
 .partially_verified, .recovering, .candidate, .pending, .empty, .related, .reposted, .paused { background: #4a4220; color: #f2c94c; }
 .contradicted, .unavailable, .expired, .rejected, .unverified, .degraded, .broken, .closed, .above_band, .error { background: #4d2424; color: var(--bad); }
+.saved, .applied, .responded, .assessment, .interview { background: #243b5c; color: #8ab4f8; }
+.offer, .hired { background: #1d4d38; color: var(--ok); }
 .india { background: #243b5c; color: #8ab4f8; }
 .remote { background: #1d4d38; color: var(--ok); }
 .timeline { list-style: none; padding: 0; margin: 0; li { display: grid; grid-template-columns: 7.5rem 5.5rem minmax(0, 1fr); gap: .75rem; padding: .45rem 0; border-bottom: 1px solid #262a33; overflow-wrap: anywhere; @media (max-width: 520px) { grid-template-columns: minmax(0, 1fr); gap: .1rem; } } time { color: var(--muted); } }

@@ -30,6 +30,7 @@ The full specification is in [PROMPT.md](PROMPT.md). Decisions made so far are i
 | Jobs J4 | Portals tab: board health, counts, enable/disable, re-check, add from a careers URL | Built and tested (342 tests, `tsc`, `eslint`, `next build`), live on the API and dashboard 2026-11-21, not committed (decision 107) |
 | Jobs J5 | Explore v2: fit, role and funding badge, open or closed, sorts, new-since-last-visit dot, measured geo accuracy | Built and tested (444 tests, `tsc`, `eslint`, `next build`), live on the API and dashboard 2026-11-21, not committed; owner label corrections pending (decision 108) |
 | Jobs J6 | Scheduled scans: saved Explore searches run by the worker, one digest per run, `/scans` page, Schedule button on Explore | Built and tested (461 tests, `tsc`, `eslint`), live on the API, worker and dashboard 2026-11-22 (migration `0014` applied after a backup), not committed (decision 110) |
+| Jobs J7 | Pipeline: save or skip jobs from Explore, Inbox plus a tab per state with counts, bulk moves, status history, detail page, funnel, one-time import of save/applied marks | Built and tested (475 tests, `tsc`, `eslint`), live on the API, worker and dashboard 2026-11-22 (migration `0015` applied after a backup); import dry run found 0 marks (decision 111) |
 
 The work goes one phase at a time. Each phase ends with a report and waits for an explicit go.
 

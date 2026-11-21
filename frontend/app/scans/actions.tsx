@@ -7,8 +7,8 @@ import styles from "../ui.module.scss";
 // The browser calls the API directly, as /portals does: the write guard checks the Origin header, which only a browser page on an allowed origin sends.
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
-export async function send(method: "POST" | "DELETE", path: string, body: unknown = {}): Promise<{ ok: boolean; data: { detail?: unknown; id?: string } | null }> {
-  const r = await fetch(`${API}${path}`, { method, headers: { "Content-Type": "application/json" }, body: method === "POST" ? JSON.stringify(body) : undefined });
+export async function send(method: "POST" | "PATCH" | "DELETE", path: string, body: unknown = {}): Promise<{ ok: boolean; data: { detail?: unknown; id?: string; tracked?: number; changed?: number } | null }> {
+  const r = await fetch(`${API}${path}`, { method, headers: { "Content-Type": "application/json" }, body: method === "DELETE" ? undefined : JSON.stringify(body) });
   return { ok: r.ok, data: await r.json().catch(() => null) };
 }
 export const why = (d: { detail?: unknown } | null) => (typeof d?.detail === "string" ? d.detail : "Request failed");
@@ -18,7 +18,7 @@ export function RowActions({ id, status }: { id: string; status: string }) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [sure, setSure] = useState(false);
-  const run = async (method: "POST" | "DELETE", path: string, done: string) => {
+  const run = async (method: "POST" | "PATCH" | "DELETE", path: string, done: string) => {
     setBusy(true);
     setNote(null);
     const { ok, data } = await send(method, path);
