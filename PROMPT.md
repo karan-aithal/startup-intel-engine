@@ -547,3 +547,6 @@ Prove this complete workflow before adding more integrations. Do not spend weeks
 ### Starting instruction
 
 Begin with Phase 0 only. First inspect the environment and any existing repository. Then send me your numbered Phase 0 questions. Do not write application code until I answer them. Do not start Phase 1 until I have verified and accepted Phase 0.
+
+
+PLaywright automation to browser pages and search for latest posts and news and stories for a time in a day to gather more information

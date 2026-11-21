@@ -79,6 +79,29 @@ async def process_jobs(sm, limit: int = 100) -> int:
     return len(jobs)
 
 
+async def portal_checks(sm, cfg) -> int:
+    """The owner's "re-check now" (J4): poll the route at once, outside its schedule. run_once records success or failure the usual way, so a
+    success closes an open circuit."""
+    async with sm() as s:
+        jobs = await queue.claim(s, WORKER, kinds=["portal_check"], limit=3, lease_s=300)
+        await s.commit()
+    for j in jobs:
+        try:
+            async with sm() as s:
+                row = (await s.execute(text("SELECT name, config FROM source_registry WHERE id = CAST(:i AS uuid)"), {"i": j["payload"]["route_id"]})).first()
+            if row:
+                await run_once(sm, build_adapter(row.name, row.config, sec_email=cfg.sec_contact_email, imap=imap_cfg(cfg), bot=bot_cfg(cfg),
+                                                 secrets=secrets_cfg(cfg)))
+            async with sm() as s:
+                await queue.complete(s, str(j["id"]), WORKER)
+                await s.commit()
+        except Exception as exc:  # noqa: BLE001
+            async with sm() as s:
+                await queue.fail(s, str(j["id"]), WORKER, f"{type(exc).__name__}: {exc}")
+                await s.commit()
+    return len(jobs)
+
+
 async def llm_jobs(sm, cfg) -> int:
     """One job at a time on its own loop, so model latency cannot delay process_jobs or alert delivery."""
     async with sm() as s:
@@ -178,6 +201,7 @@ async def _run(sm, sink, cfg, beat):
     await asyncio.gather(
         _loop("scheduler", lambda: poll_due(sm, cfg.sec_contact_email, imap_cfg(cfg), bot_cfg(cfg), secrets=secrets_cfg(cfg)), 30),
         _loop("jobs", lambda: process_jobs(sm), 2),
+        _loop("portal_checks", lambda: portal_checks(sm, cfg), 5),
         _loop("alerts", lambda: deliver_pending(sm, sink, cfg.display_timezone), 5),
         _loop("heartbeat", beat, 30),
         _loop("discovery", lambda: discover_pending(sm), 600),

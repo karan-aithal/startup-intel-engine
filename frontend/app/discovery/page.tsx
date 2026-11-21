@@ -7,7 +7,7 @@ import { Loading, Pill } from "../lib/ui";
 type Data = {
   candidates: { id: string; name: string; domain: string | null; status: string; match_confidence: number | null; matched_company_id: string | null; matched_company: string | null; created_at: string }[];
   candidate_status: { status: string; n: number }[];
-  boards: { provider: string; board_token: string; status: string; discovered_via: string | null; last_job_count: number | null; company_id: string; company: string; created_at: string }[];
+  boards: { provider: string; board_token: string; status: string; discovered_via: string | null; last_job_count: number | null; company_id: string | null; company: string | null }[];
   board_status: { status: string; n: number }[];
   company_sources: { kind: string; status: string; n: number }[];
 };
@@ -29,10 +29,10 @@ async function Content() {
         ))}</tbody></table></div>
       <h2>ATS boards</h2>
       <Counts rows={d.board_status} />
-      <div className={styles.scroll}><table className={styles.table}><thead><tr><th>Company</th><th>Provider</th><th>Token</th><th>Status</th><th>Via</th><th>Jobs</th><th>Found</th></tr></thead>
+      <div className={styles.scroll}><table className={styles.table}><thead><tr><th>Company</th><th>Provider</th><th>Token</th><th>Status</th><th>Via</th><th>Jobs</th></tr></thead>
         <tbody>{d.boards.map((b) => (
-          <tr key={b.provider + b.board_token}><td><Link href={`/companies/${b.company_id}`}>{b.company}</Link></td><td>{b.provider}</td><td>{b.board_token}</td>
-            <td><Pill v={b.status} /></td><td>{b.discovered_via ?? "—"}</td><td>{b.last_job_count ?? "—"}</td><td>{day(b.created_at)}</td></tr>
+          <tr key={b.provider + b.board_token}><td>{b.company_id ? <Link href={`/companies/${b.company_id}`}>{b.company}</Link> : "—"}</td><td>{b.provider}</td><td>{b.board_token}</td>
+            <td><Pill v={b.status} /></td><td>{b.discovered_via ?? "—"}</td><td>{b.last_job_count ?? "—"}</td></tr>
         ))}</tbody></table></div>
       <h2>Company sources</h2>
       {d.company_sources.length ? (
@@ -46,6 +46,7 @@ export default function Discovery() {
   return (
     <main className={styles.page}>
       <h1>Discovery</h1>
+      <p className={styles.muted}>Company candidates and sources. Board health and controls are on <Link href="/portals">Portals</Link>.</p>
       <Suspense fallback={<Loading />}><Content /></Suspense>
     </main>
   );

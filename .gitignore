@@ -42,3 +42,4 @@ __pycache__/
 logs/
 .pytest_cache/
 .env.bak
+graphify-out/
