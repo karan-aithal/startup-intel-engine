@@ -83,3 +83,18 @@ async def test_sorts(sm, seeded, sort, first):
 async def test_filters_still_compose_with_the_new_ones(sm, seeded):
     d = await call(q="engineer", exclude="staff", location="india", sort="fit", source="Himalayas")
     assert [j["title"] for j in d["items"]] == ["Senior Backend Engineer"] and d["total"] == 1
+
+
+async def test_years_first_seen_and_reposts_on_explore_rows(sm, seeded):
+    async with sm() as s:
+        sid = (await s.execute(text("SELECT id FROM source_registry WHERE name = 'Himalayas'"))).scalar_one()
+        await s.execute(text("UPDATE job_postings SET years_min = 12, first_seen_at = now() - interval '2 days' WHERE source_id = :s AND external_job_id = '1'"), {"s": sid})
+        # the same role listed again under a new id 20 days later: a repost; a sibling listed the same day is not
+        for ext, ago in (("1b", 20), ("1c", 2)):
+            await s.execute(text("""INSERT INTO job_postings (source_id, external_job_id, title, company_name, status, first_seen_at)
+                VALUES (:s, :e, :t, 'Alpha', 'open', now() - make_interval(days => :a))"""), {"s": sid, "e": ext, "t": "Product Designer", "a": ago})
+        await s.commit()
+    by = {j["title"]: j for j in (await call())["items"]}
+    s = by["Senior Backend Engineer"]
+    assert s["years_min"] == 12 and s["above_band"] and s["fit"] == "weak" and s["first_seen_at"] is not None  # asks more than max_years: above the band
+    assert by["Product Designer"]["reposted"] and not s["reposted"]

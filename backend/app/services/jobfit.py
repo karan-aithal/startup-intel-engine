@@ -9,13 +9,17 @@ import yaml
 CONFIG = Path(__file__).resolve().parents[3] / "config" / "jobs.yaml"
 
 
+def word_pattern(w: str) -> str:
+    """Whole word; an entry "stem:engineer" is a word that STARTS with engineer (engineers, engineering), as in career-ops title-keywords.mjs."""
+    return re.escape(w[5:]) + r"\w*" if w.startswith("stem:") else re.escape(w) + r"\b"
+
+
 @lru_cache
 def cfg() -> dict:
     c = yaml.safe_load(CONFIG.read_text())
 
-    def rx(words):  # whole words; an entry "stem:engineer" is a word that STARTS with engineer (engineers, engineering), as in career-ops title-keywords.mjs
-        parts = [re.escape(w[5:]) + r"\w*" if w.startswith("stem:") else re.escape(w) + r"\b" for w in words]
-        return re.compile(r"\b(?:" + "|".join(parts) + ")", re.IGNORECASE) if words else None
+    def rx(words):
+        return re.compile(r"\b(?:" + "|".join(word_pattern(w) for w in words) + ")", re.IGNORECASE) if words else None
 
     c["_role"] = {k: rx(v) for k, v in c["role"].items()}
     c["_exclude"] = rx(c.get("exclude_words") or [])
@@ -66,11 +70,11 @@ def role_category(title: str | None) -> str:
     return next((k for k, r in cfg()["_role"].items() if r.search(t)), "other")
 
 
-def fit(title: str | None, location: str | None, remote: bool) -> str:
+def fit(title: str | None, location: str | None, remote: bool, years: int | None = None) -> str:
     """strong: a target level (named in the title) at a preferred place or remote. related: a target level elsewhere, or no level named. weak: above your
-    levels, or an excluded word. Geo comes in already decided (services/geo.py); this never recomputes it."""
+    levels, an excluded word, or a stated experience bar above `max_years` (career-ops marks this "above band"). Geo comes in already decided (services/geo.py); this never recomputes it."""
     c, level = cfg(), seniority(title)
-    if (c["_exclude"] and c["_exclude"].search(title or "")) or (level and level not in c["targets"]["seniority"]):
+    if (c["_exclude"] and c["_exclude"].search(title or "")) or (level and level not in c["targets"]["seniority"]) or (years and years > c["targets"]["max_years"]):
         return "weak"
     if level and (remote or c["_places"].search(location or "")):
         return "strong"

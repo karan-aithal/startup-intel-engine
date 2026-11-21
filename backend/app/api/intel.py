@@ -3,6 +3,7 @@
 India is derived at read time with the same rule alerts use (pipeline.INDIA over event location, or raw_metadata.region == 'india').
 It is never stored: companies.is_india_linked feeds scoring and stays untouched. A round is India when any of its evidence events is;
 a company is India when any of its rounds or any job on its ATS boards is."""
+import re
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
@@ -151,8 +152,16 @@ FUNDED = """SELECT DISTINCT ON (f.company_id) f.company_id::text AS cid, f.stage
     FROM funding_rounds f WHERE f.company_id::text = ANY(:ids) AND f.verification_status IN ('VERIFIED', 'PARTIALLY_VERIFIED') AND NOT f.is_rumour
       AND coalesce(f.announced_at, f.first_detected_at) > now() - make_interval(days => :d)
     ORDER BY f.company_id, coalesce(f.announced_at, f.first_detected_at) DESC"""
-JOB_STATUS = """SELECT j.source_id::text || ':' || j.external_job_id AS k, j.closed_at IS NULL AS open FROM job_postings j
+JOB_STATUS = """SELECT j.source_id::text || ':' || j.external_job_id AS k, j.closed_at IS NULL AS open, j.first_seen_at, j.years_min FROM job_postings j
     JOIN unnest(CAST(:sids AS text[]), CAST(:exts AS text[])) AS x(sid, ext) ON j.source_id::text = x.sid AND j.external_job_id = x.ext"""
+# Reposts (career-ops detect-reposts.mjs, MIT): the same role listed again under a new id. Same company and same normalised title, two or more ids, first seen on
+# dates at least REPOST_SPAN_DAYS apart, within REPOST_WINDOW_DAYS. A span of zero is a company listing sibling openings at once, not a repost, so a record
+# that has only just been built flags nothing (first_seen is when WE first saw the job).
+REPOST_SPAN_DAYS, REPOST_WINDOW_DAYS = 7, 90
+REPOSTS = f"""SELECT coalesce(company_id::text, lower(company_name)) AS ck, btrim(regexp_replace(lower(title), '[^a-z0-9]+', ' ', 'g')) AS tk
+    FROM job_postings WHERE first_seen_at > now() - interval '{REPOST_WINDOW_DAYS} days' AND coalesce(company_id::text, company_name) IS NOT NULL
+    GROUP BY 1, 2 HAVING count(DISTINCT source_id::text || external_job_id) >= 2 AND max(first_seen_at) - min(first_seen_at) >= interval '{REPOST_SPAN_DAYS} days'"""
+_key = lambda company, title: (str(company or "").lower(), re.sub(r"[^a-z0-9]+", " ", (title or "").lower()).strip())
 
 
 @router.get("/explore")
@@ -181,15 +190,19 @@ async def explore(mode: Literal["all", "india", "remote"] = "all", q: str = "", 
         india = india or region_india
         if (india or remote) and (not want or any(w in title for w in want)) and not any(w in title for w in drop) \
                 and (not where or any(w in loc for w in where)):
-            found.append({**r, "india": india, "remote": remote, "fit": jobfit.fit(r["title"], r["location"], remote),
-                          "role": jobfit.role_category(r["title"]), "seniority": jobfit.seniority(r["title"])})
+            found.append({**r, "india": india, "remote": remote, "role": jobfit.role_category(r["title"]), "seniority": jobfit.seniority(r["title"])})
     ids = list({str(j["company_id"]) for j in found if j["company_id"]})
     funded = {x["cid"]: x for x in await _q(FUNDED, ids=ids, d=jobfit.cfg()["funding_window_days"])} if ids else {}
-    state = {x["k"]: x["open"] for x in await _q(JOB_STATUS, sids=[j["sid"] for j in found], exts=[j["ext"] or "" for j in found])} if found else {}
+    state = {x["k"]: x for x in await _q(JOB_STATUS, sids=[j["sid"] for j in found], exts=[j["ext"] or "" for j in found])} if found else {}
+    reposted = {(x["ck"], x["tk"]) for x in await _q(REPOSTS)} if found else set()
     for j in found:
         f = funded.get(str(j["company_id"]))
         j["funding"] = {"stage": f["stage"], "status": f["verification_status"], "at": f["at"]} if f else None
-        j["open"] = state.get(f"{j.pop('sid')}:{j.pop('ext')}")  # None: the job has no record
+        rec = state.get(f"{j.pop('sid')}:{j.pop('ext')}")  # None: the job has no record
+        j["open"], j["first_seen_at"], j["years_min"] = (rec["open"], rec["first_seen_at"], rec["years_min"]) if rec else (None, None, None)
+        j["above_band"] = bool(j["years_min"] and j["years_min"] > jobfit.cfg()["targets"]["max_years"])
+        j["fit"] = jobfit.fit(j["title"], j["location"], j["remote"], j["years_min"])
+        j["reposted"] = _key(j["company_id"] or j["company"], j["title"]) in reposted
     found = [j for j in found if status == "all" or j["open"] is not False]
     picked = [j for j in found if (mode == "all" or j[mode]) and (not source or j["source"] == source)]
     when = lambda j: (j["published_at"] or j["detected_at"]).timestamp() if (j["published_at"] or j["detected_at"]) else 0

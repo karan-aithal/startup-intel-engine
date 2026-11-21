@@ -10,6 +10,7 @@ type Job = {
   source: string; company_id: string | null; company: string | null; india: boolean; remote: boolean;
   fit: "strong" | "related" | "weak"; role: string; seniority: string | null; open: boolean | null;
   funding: { stage: string | null; status: string; at: string | null } | null;
+  years_min: number | null; above_band: boolean; reposted: boolean; first_seen_at: string | null;
 };
 type Counts = { all: number; india: number; remote: number };
 type Data = { total: number; items: Job[]; truncated: boolean; counts: Counts; sources: { source: string; jobs: number }[] };
@@ -68,11 +69,11 @@ async function Content({ sp }: { sp: Sp }) {
           <table className={styles.table}><thead><tr><th>Title</th><th>Company</th><th>Location</th><th>Fit</th><th>Role</th><th>Funding</th><th>Posted</th><th>Source</th></tr></thead>
             <tbody>{d.items.map((j) => (
               <tr key={j.id}>
-                <td>{j.source_url ? <a href={j.source_url} rel="noopener noreferrer">{j.title ?? "(untitled)"}</a> : (j.title ?? "(untitled)")}<New at={j.detected_at} />{j.open === false && <> <Pill v="Closed" /></>}</td>
+                <td>{j.source_url ? <a href={j.source_url} rel="noopener noreferrer">{j.title ?? "(untitled)"}</a> : (j.title ?? "(untitled)")}<New at={j.first_seen_at ?? j.detected_at} />{j.open === false && <> <Pill v="Closed" /></>}{j.reposted && <> <Pill v="Reposted" /></>}</td>
                 <td>{j.company_id ? <Link href={`/companies/${j.company_id}`}>{j.company}</Link> : (j.company ?? "—")}</td>
                 <td>{j.location ?? "—"}</td>
                 <td><Pill v={j.fit} /> {j.india && <Pill v="India" />} {j.remote && <Pill v="Remote" />}</td>
-                <td>{j.role}{j.seniority ? ` · ${j.seniority}` : ""}</td>
+                <td>{j.role}{j.seniority ? ` · ${j.seniority}` : ""}{j.years_min ? ` · ${j.years_min}+ yrs` : ""}{j.above_band && <> <Pill v="Above band" /></>}</td>
                 <td>{j.funding ? <Pill v={`${j.funding.stage ?? "Round"} ${day(j.funding.at)}`} /> : "—"}</td>
                 <td>{day(j.published_at ?? j.detected_at)}</td><td>{j.source}</td>
               </tr>
