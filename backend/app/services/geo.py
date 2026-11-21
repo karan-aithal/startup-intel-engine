@@ -9,6 +9,15 @@ import re
 INDIA = re.compile(
     r"\b(india|bengaluru|bangalore|mumbai|delhi|gurgaon|gurugram|noida|hyderabad|pune|chennai|kolkata|calcutta|ahmedabad|jaipur|kochi|cochin|"
     r"chandigarh|mohali|coimbatore|indore|trivandrum|thiruvananthapuram|nagpur|lucknow|vadodara|bhubaneswar|visakhapatnam|mysuru|mysore)\b", re.IGNORECASE)
+# More Indian places, for job locations only (J2, decision 105). Kept apart from INDIA, which the funding checks in verify.py and the dashboards also use:
+# widening that would change funding evidence. Found on real data: Paytm and CRED list "Ludhiana, Punjab", "Patna, Bihar", "Aligarh, Uttar Pradesh" and
+# "tamil nadu" with no word "India". States are safe words; ambiguous towns (Salem, Punjab alone) are left out on purpose.
+PLACES = (r"|nashik|nasik|thane|navi mumbai|faridabad|ghaziabad|surat|rajkot|patna|ranchi|raipur|bhopal|dehradun|guwahati|mangalore|mangaluru|hubli|belagavi|"
+          r"belgaum|madurai|trichy|tiruchirappalli|vijayawada|vizag|guntur|warangal|kanpur|agra|varanasi|ludhiana|amritsar|patiala|jalandhar|jodhpur|udaipur|"
+          r"panaji|pondicherry|puducherry|gandhinagar|hosur|aurangabad|kolhapur|jamshedpur|cuttack|siliguri|durgapur|vellore|aligarh|sonipat|karnal|meerut|"
+          r"prayagraj|allahabad|jammu|andhra pradesh|arunachal pradesh|assam|bihar|chhattisgarh|goa|gujarat|haryana|himachal pradesh|jharkhand|karnataka|"
+          r"kerala|madhya pradesh|maharashtra|odisha|orissa|rajasthan|tamil nadu|telangana|uttar pradesh|uttarakhand|west bengal")
+JOB_INDIA = re.compile(INDIA.pattern[:-3] + PLACES + r")\b", re.IGNORECASE)
 REMOTE = re.compile(r"\b(remote|remotely|work from home|wfh|anywhere|telecommut\w*)\b", re.IGNORECASE)
 NOT_REMOTE = re.compile(r"\b(?:non|not|no)[^a-z]*remote", re.IGNORECASE)  # "Not remote", "non-remote": never rescued
 WORLDWIDE = re.compile(r"\b(worldwide|anywhere|global|apac|asia(?:[- ]pacific)?|south asia|international)\b", re.IGNORECASE)
@@ -19,11 +28,17 @@ FILLER = re.compile(REMOTE.pattern + "|" + WORLDWIDE.pattern + r"|\b(fully|100|f
                     r"work|home|from|or|and|the|in|only|eligible|open|to)\b", re.IGNORECASE)
 
 
-def classify_geo(location: str | None, title: str | None = None) -> tuple[bool, bool]:
-    """(india, remote_open_to_india). Both can be true ("Remote, India")."""
+def classify_geo(location: str | None, title: str | None = None, workplace: str | None = None) -> tuple[bool, bool]:
+    """(india, remote_open_to_india). Both can be true ("Remote, India").
+    `workplace` is the ATS's own remote | hybrid | onsite field (Lever, Ashby; official docs). It settles the ambiguous cases only: hybrid or onsite is never
+    remote, and a remote job with no location is remote. It never widens a named place: "Remote" + workplace remote + "California" is still limited."""
     loc = (location or "").strip()
-    india = bool(INDIA.search(loc))
-    if loc:
+    india = bool(JOB_INDIA.search(loc))
+    if workplace in ("hybrid", "onsite"):
+        marked = False
+    elif workplace == "remote" and not NOT_REMOTE.search(loc):
+        marked = True
+    elif loc:
         marked = bool(REMOTE.search(loc)) and not NOT_REMOTE.search(loc)
     else:
         t = title or ""
@@ -39,5 +54,5 @@ def open_to_india(restriction: str | None) -> bool:
     return not r or bool(INDIA.search(r) or (WORLDWIDE.search(r) and not EXCEPT.search(r)))
 
 
-def wanted(location: str | None, title: str | None = None) -> bool:
-    return any(classify_geo(location, title))
+def wanted(location: str | None, title: str | None = None, workplace: str | None = None) -> bool:
+    return any(classify_geo(location, title, workplace))
