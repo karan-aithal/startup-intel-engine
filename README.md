@@ -25,6 +25,7 @@ The full specification is in [PROMPT.md](PROMPT.md). Decisions made so far are i
 | Jobs PR #4 | India and remote-open-to-India jobs: `services/geo.py`, Himalayas and Remotive, `/explore` | Merged, recorded in decisions 93 to 96 |
 | Jobs J0 | Baseline check on real data, Himalayas and Remotive enabled, gaps measured | Awaiting acceptance (decisions 94, 97, 98) |
 | Jobs J1 | Write guard and the job record (`job_postings`, migration 0011) | Applied to the live database 2026-11-18 (migration 0011, 7184 records backfilled); awaiting acceptance (decisions 100, 101) |
+| Jobs J2 | Keka, Darwinbox, TurboHire, Zoho Recruit and SmartRecruiters boards; workplace type; small-board flag; aggregator list; fetch guard | Built and tested (312 tests), no migration; Darwinbox live smoke blocked by Cloudflare (decisions 102 to 105) |
 
 The work goes one phase at a time. Each phase ends with a report and waits for an explicit go.
 
