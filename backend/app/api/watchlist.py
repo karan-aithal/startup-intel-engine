@@ -2,10 +2,11 @@
 import re
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import text
 
+from app.api.guard import local_write
 from app.db.session import get_sessionmaker
 from app.services.registry import register_source, set_enabled
 
@@ -50,7 +51,7 @@ async def list_all() -> dict:
     return {"telegram": tg, "bluesky": bs}
 
 
-@router.post("/{kind}")
+@router.post("/{kind}", dependencies=[Depends(local_write)])
 async def add(kind: Kind, item: Item) -> dict:
     v = clean(kind, item.value)
     async with get_sessionmaker()() as s:
@@ -69,7 +70,7 @@ async def add(kind: Kind, item: Item) -> dict:
     return {"added": v}
 
 
-@router.delete("/{kind}")
+@router.delete("/{kind}", dependencies=[Depends(local_write)])
 async def remove(kind: Kind, value: str) -> dict:
     v = clean(kind, value)
     async with get_sessionmaker()() as s:

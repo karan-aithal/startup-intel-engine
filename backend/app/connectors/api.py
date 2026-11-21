@@ -99,6 +99,7 @@ class AtsAdapter(SourceAdapter):
     """One job board. Emits one 'job' event per posting; the (source, id) key makes repeats no-ops."""
 
     connector_type = "api"
+    full_listing = True
 
     def __init__(self, provider: str, token: str, client: httpx.AsyncClient | None = None):
         if provider not in ATS_URLS:

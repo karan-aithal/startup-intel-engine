@@ -161,8 +161,10 @@ class AtsBoard(Base, Timestamps):
 class JobPosting(Base, Timestamps):
     __tablename__ = "job_postings"
     id: Mapped[uuid.UUID] = pk()
+    source_id: Mapped[uuid.UUID | None] = uuid_fk("source_registry.id", nullable=True, ondelete="SET NULL")  # the route that listed it (an ATS board or a remote board)
     ats_board_id: Mapped[uuid.UUID | None] = uuid_fk("ats_boards.id", nullable=True, ondelete="SET NULL")
     company_id: Mapped[uuid.UUID | None] = uuid_fk("companies.id", nullable=True, ondelete="SET NULL")
+    company_name: Mapped[str | None] = mapped_column(Text)  # the record's own copy: events lose their text at retention (decision 75)
     source_event_id: Mapped[uuid.UUID | None] = uuid_fk("source_events.id", nullable=True, ondelete="SET NULL")
     external_job_id: Mapped[str | None] = mapped_column(String(200))
     title: Mapped[str] = mapped_column(Text)
@@ -179,7 +181,8 @@ class JobPosting(Base, Timestamps):
     last_seen_at = ts()
     closed_at = ts(default_now=False)
     __table_args__ = (
-        UniqueConstraint("ats_board_id", "external_job_id", name="uq_job_postings_board_job"),
+        UniqueConstraint("ats_board_id", "external_job_id", name="uq_job_postings_board_job"),  # does not dedupe a NULL board
+        UniqueConstraint("source_id", "external_job_id", name="uq_job_postings_source_job"),  # the real key: works for ATS and remote boards
         Index("ix_job_postings_company", "company_id"),
     )
 
