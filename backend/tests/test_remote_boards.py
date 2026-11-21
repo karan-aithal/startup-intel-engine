@@ -69,20 +69,30 @@ async def test_himalayas_keeps_only_jobs_open_to_india_and_dates_them_in_utc():
     assert apac.location == "Remote (India and 3 other countries)"
 
 
-async def test_himalayas_pages_until_it_reaches_jobs_it_has_seen():
-    pages = {None: {"jobs": [hj(i, 1000 - i) for i in range(1, 4)], "nextCursor": "p2"},
-             "p2": {"jobs": [hj(4, 990), hj(5, 50), hj(6, 40)], "nextCursor": "p3"},  # 50 and 40 are older than the cursor
-             "p3": {"jobs": [hj(7, 30)], "nextCursor": None}}
+async def test_himalayas_searches_india_and_worldwide_and_pages_until_it_reaches_seen_jobs():
+    pages = {("in", "1"): [hj(i, 1000 - i, ["India"]) for i in range(1, 21)],
+             ("in", "2"): [hj(21, 970, ["India"]), hj(22, 50, ["India"])] + [hj(i, 40, ["India"]) for i in range(23, 41)],  # 50 and 40 are older than the cursor
+             ("ww", "1"): [hj(100, 5)] + [hj(i, 990 - i) for i in range(101, 120)],  # a pinned old job tops the list, fresh ones follow on the same page
+             ("ww", "2"): [hj(i, 5) for i in range(120, 140)], ("in", "3"): [], ("ww", "3"): []}
     seen = []
 
     def handler(r):
-        seen.append(r.url.params.get("cursor"))
-        return httpx.Response(200, json=pages[r.url.params.get("cursor")])
+        q = r.url.params
+        key = ("in" if q.get("country") == "IN" else "ww", q["page"])
+        assert r.url.path == "/jobs/api/search" and q["sort"] == "recent"
+        assert (q.get("exclude_worldwide") == "true") == (key[0] == "in") and (q.get("worldwide") == "true") == (key[0] == "ww")
+        seen.append(key)
+        return httpx.Response(200, json={"jobs": pages[key]})
 
-    res = await HimalayasAdapter("H", client(handler)).fetch({"since": 100})
-    assert [j["guid"][-1] for j in res.items] == ["1", "2", "3", "4"] and res.cursor == {"since": 999} and seen == [None, "p2"]
-    first = await HimalayasAdapter("H", client(handler)).fetch(None)  # no cursor yet: walks every page
-    assert len(first.items) == 7 and seen[2:] == [None, "p2", "p3"]
+    res = await HimalayasAdapter("H", client(handler)).fetch({"since_in": 100, "since_ww": 100})
+    assert [int(j["guid"].rsplit("/", 1)[1]) for j in res.items] == list(range(1, 22)) + list(range(101, 120))  # 22 and the 40s are older than since_in
+    assert res.cursor == {"since_in": 999, "since_ww": 889} and seen == [("in", "1"), ("in", "2"), ("ww", "1"), ("ww", "2")]
+    seen.clear()
+    first = await HimalayasAdapter("H", client(handler)).fetch(None)  # no cursor yet: every page up to the cap
+    assert len(first.items) == 40 + 40 and seen == [(k, str(n)) for k in ("in", "ww") for n in (1, 2, 3)]  # an empty page ends each query
+    seen.clear()
+    again = await HimalayasAdapter("H", client(handler)).fetch(res.cursor)  # nothing newer: the first page of each query only
+    assert [int(j["guid"].rsplit("/", 1)[1]) for j in again.items] == [1, 101] and seen == [("in", "1"), ("ww", "1")] and again.cursor == res.cursor
 
 
 async def test_remotive_normalize_and_filter():

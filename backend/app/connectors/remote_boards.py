@@ -4,7 +4,7 @@ Only jobs open to India (see services.geo) become events, so a board with ~100k 
 "Remote (<restriction>)", e.g. "Remote (worldwide)" or "Remote (APAC)", so alerts and /api/explore apply the same rule to every source.
 
 Remotive's terms: poll at most 4 times a day, show Remotive as the source and link to the job on remotive.com (the source name and url do).
-Himalayas: cursor paging, 20 jobs a page. The endpoint shapes follow career-ops providers/himalayas.mjs and remotive.mjs (MIT)."""
+Himalayas: search endpoint, page=N, 20 jobs a page. The endpoint shapes follow career-ops providers/himalayas.mjs and remotive.mjs (MIT)."""
 from datetime import UTC, datetime
 
 import httpx
@@ -13,9 +13,12 @@ from app.connectors.api import _get_json
 from app.connectors.base import Capabilities, FetchResult, NormalizedEvent, SourceAdapter
 from app.services.geo import open_to_india
 
-HIMALAYAS_URL = "https://himalayas.app/jobs/api"
 REMOTIVE_URL = "https://remotive.com/api/remote-jobs"
-HIMALAYAS_PAGES = 5  # ponytail: newest 100 per poll; more than 100 new jobs (eligible or not) inside one poll interval would be missed
+HIMALAYAS_SEARCH = "https://himalayas.app/jobs/api/search"  # documented: page=N (20 a page, no cursor), country, worldwide, exclude_worldwide, sort
+# Two server-side filters instead of the browse feed (decision 99): the feed's pubDate is one refresh time shared by whole batches of
+# 100k+ jobs, so "newest 100" saw about a fifth of a batch. Search gives real update times, ordered, already limited to what India can take.
+HIMALAYAS_QUERIES = {"in": {"country": "IN", "exclude_worldwide": "true"}, "ww": {"worldwide": "true"}}  # restricted lists naming India; no restriction
+HIMALAYAS_PAGES = 5  # ponytail: newest 100 per query per poll (live 2026-11-18: about 125 and 40 a day); more inside one poll interval would be missed
 
 
 def _event(name: str, board: str, *, id: str, title: str, url: str, company: str | None, restriction: str, open_: bool,
@@ -43,16 +46,19 @@ class HimalayasAdapter(SourceAdapter):
         self.name, self._client = name, client
 
     async def fetch(self, cursor: dict | None = None) -> FetchResult:
-        since, jobs, nxt = (cursor or {}).get("since", 0), [], None
-        for _ in range(HIMALAYAS_PAGES):
-            d = await _get_json(self._client, HIMALAYAS_URL, params={"limit": 20, **({"cursor": nxt} if nxt else {})})
-            page = d.get("jobs") or []
-            fresh = [j for j in page if _pub(j) > since]
-            jobs += fresh
-            nxt = d.get("nextCursor")
-            if not nxt or len(fresh) < len(page):  # the page reached jobs an earlier poll already saw
-                break
-        return FetchResult(items=jobs, cursor={"since": max((_pub(j) for j in jobs), default=since)})
+        jobs, nxt = [], {}
+        for key, query in HIMALAYAS_QUERIES.items():
+            since = newest = (cursor or {}).get(f"since_{key}", 0)
+            for page in range(1, HIMALAYAS_PAGES + 1):
+                d = await _get_json(self._client, HIMALAYAS_SEARCH, params={**query, "sort": "recent", "page": page})
+                rows = d.get("jobs") or []
+                fresh = [j for j in rows if _pub(j) >= since]  # >=: jobs updated in the same second as the cursor are kept; event ids dedupe the repeat
+                jobs += fresh
+                newest = max([newest, *map(_pub, fresh)])
+                if len(rows) < 20 or _pub(rows[-1]) < since:  # last page, or its tail is already seen (a few pinned old jobs can top the worldwide list, never end a page)
+                    break
+            nxt[f"since_{key}"] = newest
+        return FetchResult(items=jobs, cursor=nxt)
 
     async def normalize(self, j) -> NormalizedEvent | None:
         p, countries = _pub(j), j.get("locationRestrictions") or []  # [] = open worldwide; otherwise the only countries it can be worked from
@@ -62,11 +68,11 @@ class HimalayasAdapter(SourceAdapter):
                       open_=not countries or "India" in countries, published=datetime.fromtimestamp(p, UTC) if p else None)
 
     async def health_check(self) -> bool:
-        await _get_json(self._client, HIMALAYAS_URL, params={"limit": 1})
+        await _get_json(self._client, HIMALAYAS_SEARCH, params={"worldwide": "true", "page": 1})
         return True
 
     async def get_capabilities(self) -> Capabilities:
-        return Capabilities(public_feed=True, permissions="public JSON API (himalayas.app/jobs/api)", quota="none published; up to 5 requests per poll")
+        return Capabilities(public_feed=True, permissions="public JSON API (himalayas.app/jobs/api)", quota="keyless limits not published; up to 10 requests per poll, one poll every 6 h")
 
 
 class RemotiveAdapter(SourceAdapter):
