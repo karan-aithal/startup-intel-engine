@@ -49,6 +49,7 @@ class SourceAdapter(ABC):
     name: str
     connector_type: str
     provider: str | None = None  # quota provider (config/acquisition.yaml); None = not rate-managed
+    full_listing = False  # True: every fetch returns everything the route lists (an ATS board), so jobs missing from it are closed
     limiter = None  # quota.Limiter, injected by run_once for adapters that name a provider; adapters call `await self.limiter.take()` per request
 
     @abstractmethod
