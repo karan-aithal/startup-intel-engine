@@ -173,6 +173,7 @@ class JobPosting(Base, Timestamps):
     country: Mapped[str | None] = mapped_column(String(80))
     is_remote: Mapped[bool | None] = mapped_column(Boolean)
     workplace: Mapped[str | None] = mapped_column(String(10))  # the ATS's own remote | hybrid | onsite (Lever, Ashby), kept after the event is scrubbed
+    years_min: Mapped[int | None] = mapped_column(SmallInteger)  # lowest required overall years of experience the description states (the number only)
     department: Mapped[str | None] = mapped_column(Text)
     role_category: Mapped[str | None] = mapped_column(String(60))
     seniority: Mapped[str | None] = mapped_column(String(30))

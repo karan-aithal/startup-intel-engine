@@ -11,6 +11,7 @@ import httpx
 from app.connectors.ats_vendors import VENDORS
 from app.connectors.base import Capabilities, FetchResult, NormalizedEvent, SourceAdapter
 from app.connectors.feed import USER_AGENT, FeedAdapter
+from app.services.jdyears import years_required
 from app.services.safefetch import guarded_client
 
 HN_API = "https://hn.algolia.com/api/v1/search_by_date"
@@ -141,16 +142,19 @@ class AtsAdapter(SourceAdapter):
             c = j.get("categories") or {}
             f = dict(id=j["id"], title=j["text"], url=j["hostedUrl"], loc=c.get("location"),
                      pub=datetime.fromtimestamp(j["createdAt"] / 1000, UTC) if j.get("createdAt") else None,
-                     team=c.get("team"), wp=workplace(j.get("workplaceType")))
+                     team=c.get("team"), wp=workplace(j.get("workplaceType")),
+                     yrs=years_required(" ".join(str(j.get(k) or "") for k in ("descriptionPlain", "additionalPlain")) + " " + " ".join(str(x.get("content") or "") for x in j.get("lists") or [] if isinstance(x, dict))))
         else:
             if j.get("isListed") is False:
                 return None
             f = dict(id=j["id"], title=j["title"], url=j["jobUrl"], loc=j.get("location"),
-                     pub=_iso(j.get("publishedAt")), team=j.get("department"), wp=workplace(j.get("workplaceType")))
+                     pub=_iso(j.get("publishedAt")), team=j.get("department"), wp=workplace(j.get("workplaceType")),
+                     yrs=years_required(j.get("descriptionPlain")))
         return NormalizedEvent(
             source_name=self.name, source_event_id=f["id"], source_url=f["url"], canonical_url=f["url"],
             event_type="job", title=f["title"], company_name=self.token.split("/")[0].split(".")[0] if p in VENDORS else self.token, location=f["loc"],
-            published_at=f["pub"], raw_metadata={"ats": p, "board": self.token, "team": f["team"], **({"workplace": f["wp"]} if f["wp"] else {})},
+            published_at=f["pub"], raw_metadata={"ats": p, "board": self.token, "team": f["team"], **({"workplace": f["wp"]} if f["wp"] else {}),
+                          **({"years_min": f["yrs"]} if f.get("yrs") else {})},  # the number only: the description text is read here and dropped
             permissions_metadata={"store": "title, location, team and link only"})
 
     async def health_check(self) -> bool:
