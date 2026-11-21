@@ -19,8 +19,11 @@ The full specification is in [PROMPT.md](PROMPT.md). Decisions made so far are i
 | 8 | Adaptive acquisition and optional connectors | Done |
 | 9 | Dashboard | Done |
 | 10 | Observability, security, backup | Built, awaiting acceptance |
-| 11 | Quality tuning | Planned |
-| 12 | Optional and approval-dependent connectors (off by default) | Planned |
+| 11 | Quality tuning | Built (decision 79) |
+| 12 | Data correctness and measurement (feed timestamps, classifier and India evaluation, identity report, feedback capture) | In progress, see `docs/phase12-plan.md` |
+| 13 | Company merges, renames and exclusions | Built (decision 92) |
+| Jobs PR #4 | India and remote-open-to-India jobs: `services/geo.py`, Himalayas and Remotive, `/explore` | Merged, recorded in decisions 93 to 96 |
+| Jobs J0 | Baseline check on real data, Himalayas and Remotive enabled, gaps measured | Awaiting acceptance (decisions 94, 97, 98) |
 
 The work goes one phase at a time. Each phase ends with a report and waits for an explicit go.
 
