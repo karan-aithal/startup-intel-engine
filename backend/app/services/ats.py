@@ -1,7 +1,8 @@
 """ATS board detection, registration under the growth cap, hot-company polling, Common Crawl seeding, portfolio pages.
 
 Add a provider: put its endpoint in connectors.api.ATS_URLS, its normalizer in AtsAdapter, and a DETECT regex here
-(only after verifying the public endpoint in the provider's official docs)."""
+(only after verifying the public endpoint in the provider's official docs). A vendor that needs more than one URL, a POST, or a token that
+is not a single word goes in connectors/ats_vendors.py instead: it brings its own detect regex, board URL and fetch (J2, decision 102)."""
 import json
 import re
 from urllib.parse import urlparse
@@ -10,9 +11,12 @@ import httpx
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.connectors.api import ATS_URLS, AtsAdapter
+from app.connectors.api import ATS_URLS, AtsAdapter, board_url
+from app.connectors.ats_vendors import VENDORS
 from app.connectors.feed import USER_AGENT
+from app.services.aggregators import is_aggregator
 from app.services.registry import register_source, set_enabled
+from app.services.safefetch import guarded_client
 
 DETECT = {
     "greenhouse": re.compile(r"(?:boards|job-boards)(?:\.eu)?\.greenhouse\.io/(?:embed/job_board\?for=)?([\w-]+)", re.I),
@@ -22,7 +26,8 @@ DETECT = {
 NOT_TOKENS = {"embed", "jobs", "job_board", "static", "v1"}
 HOT_POLL, NORMAL_POLL = 600, 1800
 DOCS = {"greenhouse": "https://developers.greenhouse.io/job-board.html", "lever": "https://github.com/lever/postings-api",
-        "ashby": "https://developers.ashbyhq.com"}
+        "ashby": "https://developers.ashbyhq.com", **{n: v.docs for n, v in VENDORS.items()}}
+SMALL_BOARD = 5  # a board listing this many jobs or fewer is flagged, never rejected (career-ops lib/small-board.mjs: a demo tenant or a regional sub-board)
 assert set(DETECT) == set(ATS_URLS)  # keep the two registries in step
 
 
@@ -32,6 +37,11 @@ def find_boards(html: str) -> list[tuple[str, str]]:
         for tok in rx.findall(html):
             if tok.lower() not in NOT_TOKENS and (provider, tok) not in out:
                 out.append((provider, tok))
+    for name, v in VENDORS.items():
+        for m in v.detect.finditer(html):
+            tok = v.token(m)
+            if tok and (name, tok) not in out:
+                out.append((name, tok))
     return out
 
 
@@ -54,16 +64,18 @@ async def register_board(s: AsyncSession, company_id: str, provider: str, token:
     name = f"{provider}:{token}"
     hot = (await s.execute(text("SELECT coalesce(hot_until > now(), false) FROM companies WHERE id = :i"), {"i": company_id})).scalar_one()
     await register_source(s, name, "api", category="hiring", access_method=f"{provider} job board API", docs_url=DOCS[provider],
-                          poll_interval_seconds=HOT_POLL if hot else NORMAL_POLL,
+                          poll_interval_seconds=VENDORS[provider].poll if provider in VENDORS else HOT_POLL if hot else NORMAL_POLL,
                           config={"kind": "ats", "provider": provider, "token": token})
     await s.execute(text("""INSERT INTO ats_boards (company_id, provider, board_token, board_url, status, discovered_via, evidence,
             verification_status, verified_at, last_job_count)
         VALUES (:c, :p, :t, :u, 'candidate', :v, CAST(:ev AS jsonb), 'verified', now(), :n)
         ON CONFLICT (provider, board_token) DO UPDATE SET company_id = coalesce(ats_boards.company_id, :c),
             verification_status = 'verified', verified_at = now(), last_job_count = :n,
-            evidence = CASE WHEN ats_boards.evidence = '{}'::jsonb THEN CAST(:ev AS jsonb) ELSE ats_boards.evidence END"""),
-        {"c": company_id, "p": provider, "t": token, "u": ATS_URLS[provider].format(t=token), "v": via, "n": len(fetched.items),
-         "ev": json.dumps(evidence or {"method": via})})
+            evidence = CASE WHEN ats_boards.evidence = '{}'::jsonb THEN CAST(:ev AS jsonb)
+                ELSE ats_boards.evidence || jsonb_build_object('small_board', CAST(:small AS boolean)) END"""),
+        {"c": company_id, "p": provider, "t": token, "u": board_url(provider, token), "v": via, "n": len(fetched.items),
+         "ev": json.dumps({**(evidence or {"method": via}), "small_board": len(fetched.items) <= SMALL_BOARD}),
+         "small": len(fetched.items) <= SMALL_BOARD})
     await promote_candidates(s, company_cap, board_cap, client)
     return "registered" if (await s.execute(text("SELECT status = 'active' FROM ats_boards WHERE provider = :p AND board_token = :t"),
                                             {"p": provider, "t": token})).scalar_one() else "candidate"
@@ -110,6 +122,10 @@ async def demote_stale(s: AsyncSession) -> int:
         await s.execute(text("UPDATE ats_boards SET status = 'candidate', promoted_at = NULL, promotion_reason = :w WHERE id = :i"), {"w": r.why, "i": r.id})
         await s.execute(text("""UPDATE companies SET watched = false WHERE id = :c
             AND NOT EXISTS (SELECT 1 FROM ats_boards WHERE company_id = :c AND status = 'active')"""), {"c": r.company_id})
+    # keep the small-board flag in step with the latest poll: advisory, it never changes whether a board is polled (career-ops small-board.mjs)
+    await s.execute(text("""UPDATE ats_boards SET evidence = coalesce(evidence, '{}'::jsonb) || jsonb_build_object('small_board', last_job_count <= :n)
+        WHERE status = 'active' AND last_job_count IS NOT NULL AND (evidence->'small_board') IS DISTINCT FROM to_jsonb(last_job_count <= CAST(:n AS integer))"""),
+        {"n": SMALL_BOARD})
     return len(rows)
 
 
@@ -117,7 +133,7 @@ async def detect_for_company(s: AsyncSession, company_id: str, client: httpx.Asy
     """Look for ATS links on the careers page (or homepage) and register verified boards."""
     row = (await s.execute(text("SELECT website_url, careers_url FROM companies WHERE id = :i"), {"i": company_id})).one()
     results = []
-    for url in dict.fromkeys(u for u in (row.careers_url, row.website_url) if u):
+    for url in dict.fromkeys(u for u in (row.careers_url, row.website_url) if u and not is_aggregator(u)):  # a job aggregator is not the company's own page
         try:
             r = await client.get(url, headers={"User-Agent": USER_AGENT}, follow_redirects=True)
         except httpx.HTTPError:
@@ -136,7 +152,7 @@ async def detect_pending(sm, company_cap: int, board_cap: int, limit: int = 5, c
         ids = (await s.execute(text("""SELECT id FROM companies WHERE website_url IS NOT NULL AND NOT muted
             AND coalesce(meta, '{}'::jsonb)->'ats_scanned_at' IS NULL
             AND coalesce(meta, '{}'::jsonb)->'feeds_discovered_at' IS NOT NULL LIMIT :n"""), {"n": limit})).scalars().all()
-    c, n = client or httpx.AsyncClient(timeout=15), 0
+    c, n = client or guarded_client(timeout=15), 0
     try:
         for cid in ids:
             async with sm() as s:
@@ -171,7 +187,7 @@ async def seed_from_common_crawl(s: AsyncSession, client: httpx.AsyncClient, per
         for t in toks:
             res = await s.execute(text("""INSERT INTO ats_boards (provider, board_token, board_url, status, discovered_via)
                 VALUES (:p, :t, :u, 'candidate', 'commoncrawl') ON CONFLICT (provider, board_token) DO NOTHING"""),
-                {"p": provider, "t": t, "u": ATS_URLS[provider].format(t=t)})
+                {"p": provider, "t": t, "u": board_url(provider, t)})
             new += res.rowcount
     return new
 

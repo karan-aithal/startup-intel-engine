@@ -11,7 +11,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors.feed import USER_AGENT
+from app.services.aggregators import is_aggregator
 from app.services.registry import register_source
+from app.services.safefetch import guarded_client
 
 PROBES = ("/feed", "/rss", "/feed.xml", "/rss.xml", "/atom.xml", "/blog/feed", "/blog/rss")
 GITHUB_RESERVED = {"features", "sponsors", "about", "pricing", "topics", "orgs", "login", "enterprise", "marketplace"}
@@ -60,7 +62,7 @@ def classify_links(base: str, html: str) -> list[dict]:
             hit = ("bluesky", parts[1])
         elif h == "t.me" and len(parts) == 1 and not parts[0].startswith("+") and parts[0] != "joinchat":
             hit = ("telegram", parts[0])
-        elif h == host and parts and re.fullmatch(r"(careers?|jobs?|join-us|work-with-us)", parts[0], re.I) and len(parts) == 1:
+        elif h == host and not is_aggregator(h) and parts and re.fullmatch(r"(careers?|jobs?|join-us|work-with-us)", parts[0], re.I) and len(parts) == 1:
             hit = ("careers", u.geturl())
         if hit:
             out.append({"kind": hit[0], "url": hit[1], "href": href, "via": "link on company website"})
@@ -77,6 +79,8 @@ async def _get(c: httpx.AsyncClient, url: str) -> httpx.Response:
 
 
 async def find_candidates(website: str, client: httpx.AsyncClient) -> list[dict]:
+    if is_aggregator(website):  # a job aggregator reposts other employers' jobs: it is not this company's site
+        return []
     r = await _get(client, website)
     r.raise_for_status()
     found = classify_links(str(r.url), r.text)
@@ -157,7 +161,7 @@ async def discover_pending(sm, limit: int = 5, client: httpx.AsyncClient | None 
         ids = (await s.execute(text("""SELECT id FROM companies WHERE website_url IS NOT NULL AND NOT muted
             AND coalesce(meta, '{}'::jsonb)->'feeds_discovered_at' IS NULL LIMIT :n"""), {"n": limit})).scalars().all()
     total = 0
-    c = client or httpx.AsyncClient(timeout=15)
+    c = client or guarded_client(timeout=15)
     try:
         for cid in ids:
             async with sm() as s:

@@ -18,6 +18,9 @@ from app.worker import process_jobs
     ("Bengaluru, India", "", True, False),
     ("Kolkata", "", True, False),
     ("Indiana", "", False, False),  # a word boundary, not a substring
+    # J2 (decision 105): real Paytm / CRED / CEAT locations that name a state or small town and never the word India
+    ("Ludhiana, Punjab", "", True, False), ("Patna, Bihar", "", True, False), ("tamil nadu", "", True, False), ("Nasik Plant", "", True, False),
+    ("Aligarh, Uttar Pradesh", "", True, False), ("Remote - Karnataka", "", True, True), ("Salem, Oregon", "", False, False), ("Punjab", "", False, False),
     ("Remote", "", False, True),
     ("Remote (worldwide)", "", False, True),
     ("Remote, APAC", "", False, True),

@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text
 
 from app.db.session import get_sessionmaker
-from app.services.geo import REMOTE, classify_geo
+from app.services.geo import JOB_INDIA, REMOTE, classify_geo
 from app.services.pipeline import INDIA
 
 router = APIRouter(prefix="/api", tags=["intel"])
@@ -140,6 +140,7 @@ async def hiring(region: Region = "all", q: str = "", company_id: str = "",
 
 EXPLORE_SCAN = 5000  # newest job events read per request; Python then applies the exact geo rule
 REMOTE_RX = REMOTE.pattern.replace(r"\b", r"\y")
+JOB_RX = JOB_INDIA.pattern.replace(r"\b", r"\y")  # explore's prefilter only: the wider job-location list (geo.PLACES)
 
 
 @router.get("/explore")
@@ -149,18 +150,18 @@ async def explore(mode: Literal["all", "india", "remote"] = "all", q: str = "", 
     SQL narrows by date and a loose India/remote test; services.geo then decides exactly, so alerts and this page share one rule.
     counts and sources ignore mode and source, so the tabs can show how many each would give."""
     rows = await _q(f"""SELECT e.id, e.title, e.location, e.published_at, e.detected_at, e.source_url, r.name AS source, b.company_id,
-        coalesce(c.name, e.company_name) AS company, coalesce(e.raw_metadata->>'region', '') = 'india' AS region_india
+        coalesce(c.name, e.company_name) AS company, coalesce(e.raw_metadata->>'region', '') = 'india' AS region_india, e.raw_metadata->>'workplace' AS workplace
         FROM {JOB_FROM} LEFT JOIN companies c ON c.id = b.company_id
         WHERE e.event_type = 'job' AND coalesce(e.published_at, e.detected_at) > now() - make_interval(days => :d)
-          AND ({EV_INDIA} OR e.raw_metadata->>'remote' = 'true' OR e.location ~* :rrx OR (coalesce(e.location, '') = '' AND e.title ~* :rrx))
-        ORDER BY coalesce(e.published_at, e.detected_at) DESC LIMIT {EXPLORE_SCAN}""", d=days, rrx=REMOTE_RX)
+          AND ({EV_INDIA} OR e.raw_metadata->>'remote' = 'true' OR e.raw_metadata->>'workplace' = 'remote' OR e.location ~* :rrx OR (coalesce(e.location, '') = '' AND e.title ~* :rrx))
+        ORDER BY coalesce(e.published_at, e.detected_at) DESC LIMIT {EXPLORE_SCAN}""", d=days, rrx=REMOTE_RX, rx=JOB_RX)
     words = lambda s: [w.strip().lower() for w in s.split(",") if w.strip()]
     want, drop, where = words(q), words(exclude), words(location)
     found = []
     for r in rows:
         title, loc = (r["title"] or "").lower(), (r["location"] or "").lower()
         region_india = r.pop("region_india")  # a source marked region=india (Jooble) counts even without a location
-        india, remote = classify_geo(r["location"], r["title"])
+        india, remote = classify_geo(r["location"], r["title"], r.pop("workplace"))
         india = india or region_india
         if (india or remote) and (not want or any(w in title for w in want)) and not any(w in title for w in drop) \
                 and (not where or any(w in loc for w in where)):

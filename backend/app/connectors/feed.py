@@ -7,6 +7,7 @@ import feedparser
 import httpx
 
 from app.connectors.base import Capabilities, FetchResult, NormalizedEvent, SourceAdapter
+from app.services.safefetch import guarded_client
 
 USER_AGENT = "startup-intel-engine/0.1 (personal research; polite poller)"
 
@@ -26,7 +27,7 @@ class FeedAdapter(SourceAdapter):
                 headers["If-None-Match"] = cursor["etag"]
             if cursor.get("last_modified"):
                 headers["If-Modified-Since"] = cursor["last_modified"]
-        client = self._client or httpx.AsyncClient(timeout=20, follow_redirects=True)
+        client = self._client or guarded_client(timeout=20, follow_redirects=True)
         try:
             r = await client.get(self.url, headers=headers)
         finally:
@@ -59,7 +60,7 @@ class FeedAdapter(SourceAdapter):
         )
 
     async def health_check(self) -> bool:
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as c:
+        async with guarded_client(timeout=15, follow_redirects=True) as c:
             return (await c.head(self.url, headers={"User-Agent": USER_AGENT})).status_code < 400
 
     async def get_capabilities(self) -> Capabilities:

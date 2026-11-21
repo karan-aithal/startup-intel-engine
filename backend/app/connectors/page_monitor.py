@@ -12,6 +12,7 @@ import httpx
 
 from app.connectors.base import Capabilities, FetchResult, NormalizedEvent, SourceAdapter
 from app.connectors.feed import USER_AGENT
+from app.services.safefetch import guarded_client
 
 JOB_URL = re.compile(r"/(jobs?|careers?|openings?|positions?)/[^/]+", re.I)
 MAX_NEW_PAGES = 25  # job pages fetched per run
@@ -102,7 +103,7 @@ class PageMonitorAdapter(SourceAdapter):
         return rp.can_fetch(USER_AGENT, url), rp.site_maps() or []
 
     async def fetch(self, cursor: dict | None = None) -> FetchResult:
-        c = self._client or httpx.AsyncClient(timeout=20, follow_redirects=True)
+        c = self._client or guarded_client(timeout=20, follow_redirects=True)
         try:
             ok, maps = await self._allowed(c, self.careers_url)
             if not ok:
@@ -159,7 +160,7 @@ class PageMonitorAdapter(SourceAdapter):
             raw_metadata={"origin": "jsonld"}, permissions_metadata={"store": "title, location and link only"})
 
     async def health_check(self) -> bool:
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as c:
+        async with guarded_client(timeout=15, follow_redirects=True) as c:
             return (await c.head(self.careers_url, headers={"User-Agent": USER_AGENT})).status_code < 400
 
     async def get_capabilities(self) -> Capabilities:

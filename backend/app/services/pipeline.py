@@ -47,7 +47,7 @@ async def process_event(s: AsyncSession, event_id: str) -> str:
     alertable = label in LABEL_TITLE
     if label == "hiring" and ev["event_type"] == "job":
         pub = ev["published_at"]
-        in_scope = (ev["raw_metadata"] or {}).get("region") == "india" or wanted(ev["location"], ev["title"])  # India or remote-open-to-India jobs only
+        in_scope = (ev["raw_metadata"] or {}).get("region") == "india" or wanted(ev["location"], ev["title"], (ev["raw_metadata"] or {}).get("workplace"))  # India or remote-open-to-India jobs only
         alertable = in_scope and pub is not None and datetime.now(UTC) - pub <= JOB_MAX_AGE
     duplicate = label in ("funding", "rumour") and ev["event_type"] != "form_d" and await match_logical(s, event_id, label)
     if duplicate:
