@@ -28,7 +28,7 @@ The full specification is in [PROMPT.md](PROMPT.md). Decisions made so far are i
 | Jobs J2 | Keka, Darwinbox, TurboHire, Zoho Recruit and SmartRecruiters boards; workplace type; small-board flag; aggregator list; fetch guard | Built and tested (312 tests), no migration; Darwinbox live smoke blocked by Cloudflare (decisions 102 to 105) |
 | Jobs J3 | Jobicy, We Work Remotely and Working Nomads boards | Built, tested (318 tests) and enabled live 2026-11-21 (decision 106) |
 | Jobs J4 | Portals tab: board health, counts, enable/disable, re-check, add from a careers URL | Built and tested (342 tests, `tsc`, `eslint`, `next build`), live on the API and dashboard 2026-11-21, not committed (decision 107) |
-| Jobs J5 | Explore v2: fit, role and funding badge, open or closed, sorts, new-since-last-visit dot, measured geo accuracy | Built and tested (442 tests, `tsc`, `eslint`, `next build`), live on the API and dashboard 2026-11-21, not committed; owner label corrections pending (decision 108) |
+| Jobs J5 | Explore v2: fit, role and funding badge, open or closed, sorts, new-since-last-visit dot, measured geo accuracy | Built and tested (444 tests, `tsc`, `eslint`, `next build`), live on the API and dashboard 2026-11-21, not committed; owner label corrections pending (decision 108) |
 
 The work goes one phase at a time. Each phase ends with a report and waits for an explicit go.
 

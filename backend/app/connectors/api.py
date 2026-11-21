@@ -16,6 +16,9 @@ from app.services.safefetch import guarded_client
 
 HN_API = "https://hn.algolia.com/api/v1/search_by_date"
 SEC_ATOM = "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=D&count=40&output=atom"
+# Greenhouse lists descriptions only with ?content=true, which made the 17 enabled boards 56 MB a poll instead of 3.8 MB (measured 2026-11-21). So a board is read
+# with content once a day for the experience bar (years_min) and plainly on every other poll; a job first seen between deep reads gets its figure at the next one.
+GREENHOUSE_DEEP_S = 86400
 ATS_URLS = {
     "greenhouse": "https://boards-api.greenhouse.io/v1/boards/{t}/jobs",
     "lever": "https://api.lever.co/v0/postings/{t}?mode=json",
@@ -127,9 +130,10 @@ class AtsAdapter(SourceAdapter):
         if self.provider in VENDORS:
             rows, complete = await VENDORS[self.provider].fetch(self._client, self.token)
             return FetchResult(items=rows, cursor={"count": len(rows)}, partial=not complete)
-        data = await _get_json(self._client, ATS_URLS[self.provider].format(t=self.token))
+        deep = self.provider == "greenhouse" and cursor is not None and time.time() - (cursor or {}).get("deep_at", 0) > GREENHOUSE_DEEP_S
+        data = await _get_json(self._client, ATS_URLS[self.provider].format(t=self.token) + ("?content=true" if deep else ""))
         jobs = data if self.provider == "lever" else data["jobs"]
-        return FetchResult(items=jobs, cursor={"count": len(jobs)})
+        return FetchResult(items=jobs, cursor={"count": len(jobs), **({"deep_at": time.time() if deep else (cursor or {}).get("deep_at", 0)} if self.provider == "greenhouse" else {})})
 
     async def normalize(self, j) -> NormalizedEvent | None:
         p = self.provider
@@ -137,7 +141,7 @@ class AtsAdapter(SourceAdapter):
             f = {**j, "wp": None}  # rows from ats_vendors are already {id, title, url, loc, pub, team}
         elif p == "greenhouse":
             f = dict(id=str(j["id"]), title=j["title"], url=j["absolute_url"], loc=(j.get("location") or {}).get("name"),
-                     pub=_iso(j.get("first_published") or j.get("updated_at")), team=None, wp=None)
+                     pub=_iso(j.get("first_published") or j.get("updated_at")), team=None, wp=None, yrs=years_required(j.get("content")))
         elif p == "lever":
             c = j.get("categories") or {}
             f = dict(id=j["id"], title=j["text"], url=j["hostedUrl"], loc=c.get("location"),
