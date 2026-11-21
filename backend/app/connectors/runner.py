@@ -53,7 +53,7 @@ async def run_once(sm: async_sessionmaker, adapter: SourceAdapter, scope: str = 
             out = await adapter.normalize(i)  # one item may yield several events (an alert email lists many jobs)
             events.extend(out if isinstance(out, list) else [out] if out else [])
         async with sm() as s:
-            new, dup = await ingest_batch(s, source_id, events, result.cursor, scope, full_listing=getattr(adapter, "full_listing", False))
+            new, dup = await ingest_batch(s, source_id, events, result.cursor, scope, full_listing=getattr(adapter, "full_listing", False) and not result.partial)
             await registry.record_success(s, source_id)
             await record_poll(s, source_id, interval, ok=True, items=len(result.items))
             await scheduler.schedule_next(s, source_id, result.retry_after_s)

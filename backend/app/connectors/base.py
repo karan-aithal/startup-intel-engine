@@ -42,6 +42,7 @@ class Capabilities(BaseModel):
 class FetchResult(BaseModel):
     items: list[Any] = Field(default_factory=list)
     cursor: dict | None = None  # persist only after the batch is stored
+    partial: bool = False  # the listing stopped early (page cap, a failed later page): a job missing from it is not known to be closed
     retry_after_s: float | None = None  # partial batch: the provider's quota ran out; the scheduler waits at least this long
 
 
