@@ -5,9 +5,16 @@ import httpx
 import pytest
 from sqlalchemy import text
 
+from app.api import intel
 from app.connectors.base import Capabilities, FetchResult, NormalizedEvent, SourceAdapter
 from app.connectors.factory import build_adapter
-from app.connectors.remote_boards import HimalayasAdapter, RemotiveAdapter
+from app.connectors.remote_boards import (
+    HimalayasAdapter,
+    JobicyAdapter,
+    RemotiveAdapter,
+    WeWorkRemotelyAdapter,
+    WorkingNomadsAdapter,
+)
 from app.connectors.runner import run_once
 from app.services import registry
 from app.services.geo import classify_geo, wanted
@@ -156,3 +163,121 @@ async def test_job_alerts_only_for_india_or_remote_open_to_india(sm):
         got = sorted(r.payload["title"] for r in (await s.execute(text("select payload from alert_deliveries"))).all())
         stored = (await s.execute(text("select count(*) from source_events where event_type = 'job'"))).scalar_one()
     assert got == ["Engineer a", "Engineer b", "Engineer e"] and stored == 5  # London and Remote, US are stored but never alerted
+
+
+# ---- J3: Jobicy, We Work Remotely, Working Nomads (decision 106) ----
+
+def jb(i, geo, ts, title="Engineer", company="Acme &amp; Co"):
+    return {"id": str(i), "url": f"https://jobicy.com/jobs/{i}-engineer", "jobTitle": f"{title} {i}", "companyName": company, "jobGeo": geo, "pubDate": ts}
+
+
+T = [f"2026-11-20T{h:02d}:00:00+00:00" for h in range(24)]  # T[h] = that hour on the 20th, later hour = newer
+
+
+async def test_jobicy_filters_by_geo_follows_the_cursor_and_stops_at_seen_jobs(monkeypatch):
+    monkeypatch.setattr("app.connectors.remote_boards.JOBICY_PAUSE", 0)
+    pages = {("anywhere", None): {"jobs": [jb(1, "Anywhere", T[20]), jb(2, "USA", T[19])], "hasMore": True, "nextCursor": "c1"},
+             ("anywhere", "c1"): {"jobs": [jb(3, "Anywhere", T[10]), jb(4, "Anywhere", T[9])], "hasMore": False, "nextCursor": None},
+             ("apac", None): {"jobs": [jb(5, "APAC", T[18]), jb(6, "India,  USA", T[17])], "hasMore": False, "nextCursor": None}}
+    seen = []
+
+    def handler(r):
+        q = r.url.params
+        key = (q["geo"], q.get("cursor"))
+        assert r.url.path == "/api/v2/remote-jobs" and q["count"] == "100"
+        seen.append(key)
+        return httpx.Response(200, json=pages[key])
+
+    first = await JobicyAdapter("Jobicy", client(handler)).fetch(None)
+    assert [j["id"] for j in first.items] == ["1", "2", "3", "4", "5", "6"] and seen == [("anywhere", None), ("anywhere", "c1"), ("apac", None)]
+    assert first.cursor == {"since_anywhere": int(datetime.fromisoformat(T[20]).timestamp()), "since_apac": int(datetime.fromisoformat(T[18]).timestamp())}
+    seen.clear()
+    again = await JobicyAdapter("Jobicy", client(handler)).fetch(first.cursor)  # newest seen is 20:00; page 1 of each query ends below it (19:00, 17:00), so no second page
+    assert seen == [("anywhere", None), ("apac", None)] and [j["id"] for j in again.items] == ["1", "5"]
+
+
+async def test_jobicy_keeps_only_jobs_open_to_india_and_decodes_entities():
+    a = JobicyAdapter("Jobicy")
+    kept = {g: await a.normalize(jb(1, g, T[5])) is not None for g in ("Anywhere", "APAC", "India,  USA", "USA", "Canada,  USA", "Europe", "Germany", "Anywhere except USA")}
+    assert kept == {"Anywhere": True, "APAC": True, "India,  USA": True, "USA": False, "Canada,  USA": False, "Europe": False, "Germany": False, "Anywhere except USA": False}
+    e = await a.normalize(jb(7, "India,  USA", T[5]))
+    assert e.company_name == "Acme & Co" and e.location == "Remote (India, USA)" and e.event_type == "job" and e.source_name == "Jobicy"
+    assert e.canonical_url == "https://jobicy.com/jobs/7-engineer" and e.published_at == datetime(2026, 11, 20, 5, tzinfo=UTC)  # the link goes to jobicy.com
+
+
+WWR = """<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/"><channel><title>WWR</title>
+{items}</channel></rss>"""
+
+
+def wi(slug, title, region, country="", when="Thu, 19 Nov 2026 17:03:31 +0000"):
+    return (f"<item><title>{title}</title><region>{region}</region><country>{country}</country><category>Programming</category><pubDate>{when}</pubDate>"
+            f"<guid>https://weworkremotely.com/remote-jobs/{slug}</guid><link>https://weworkremotely.com/remote-jobs/{slug}</link></item>")
+
+
+async def test_weworkremotely_reads_region_and_country_and_splits_the_company():
+    feed = WWR.format(items="".join([
+        wi("a", "Acme: Backend Engineer", "Anywhere in the World"),
+        wi("b", "Beta: Designer", "USA Only", "\U0001F1FA\U0001F1F8 United States of America"),
+        wi("c", "Gamma: SRE", "Asia Only"),
+        wi("d", "Delta: Analyst", "Anywhere in the World", "\U0001F1E8\U0001F1F4 Colombia"),  # region says anywhere, the country list is stricter
+        wi("e", "Eps: Data Eng", "Anywhere in the World", "\U0001F1EE\U0001F1F3 India, \U0001F1F3\U0001F1F1 Netherlands"),
+        wi("f", "No company here", "Anywhere in the World")]))
+    a = WeWorkRemotelyAdapter("We Work Remotely", client=client(lambda r: httpx.Response(200, content=feed.encode())))
+    items = (await a.fetch()).items
+    events = [e for e in [await a.normalize(i) for i in items] if e]
+    assert [e.source_event_id.rsplit("/", 1)[1] for e in events] == ["a", "c", "e", "f"]  # USA only and Colombia-only are dropped
+    by = {e.source_event_id.rsplit("/", 1)[1]: e for e in events}
+    assert by["a"].title == "Backend Engineer" and by["a"].company_name == "Acme" and by["a"].location == "Remote (Anywhere in the World)"
+    assert by["e"].location == "Remote (India, Netherlands)" and by["f"].title == "No company here" and by["f"].company_name is None
+    assert by["a"].published_at == datetime(2026, 11, 19, 17, 3, 31, tzinfo=UTC) and by["a"].canonical_url.startswith("https://weworkremotely.com/")
+
+
+async def test_workingnomads_keeps_only_jobs_open_to_india():
+    a = WorkingNomadsAdapter("Working Nomads")
+
+    def row(i, loc):
+        return {"url": f"https://www.workingnomads.com/job/go/{i}", "title": f"Role {i}", "company_name": "TELUS", "location": loc, "pub_date": "2026-11-19T07:13:33-05:00"}
+
+    kept = {loc: await a.normalize(row(1, loc)) is not None for loc in (
+        "Global", "Anywhere in the world", "Europe, LATAM, APAC, the U.S., Canada", "", "USA only", "USA, Canada, Ireland and UK ONLY",
+        "Time zone: CET (+/- 3 hours)", "Japan - Remote", "Worldwide except USA")}
+    assert kept == {"Global": True, "Anywhere in the world": True, "Europe, LATAM, APAC, the U.S., Canada": True, "": True, "USA only": False,
+                    "USA, Canada, Ireland and UK ONLY": False, "Time zone: CET (+/- 3 hours)": False, "Japan - Remote": False, "Worldwide except USA": False}
+    e = await a.normalize(row(2, "Global"))
+    assert e.published_at == datetime(2026, 11, 19, 12, 13, 33, tzinfo=UTC) and e.canonical_url.endswith("/job/go/2") and e.location == "Remote (Global)"
+    with pytest.raises(ValueError):
+        await WorkingNomadsAdapter("x", client(lambda r: httpx.Response(200, json={"jobs": []}))).fetch()
+
+
+def test_factory_builds_the_j3_boards():
+    assert isinstance(build_adapter("Jobicy", {"kind": "jobicy"}), JobicyAdapter)
+    assert isinstance(build_adapter("Working Nomads", {"kind": "workingnomads"}), WorkingNomadsAdapter)
+    assert isinstance(build_adapter("We Work Remotely", {"kind": "weworkremotely"}), WeWorkRemotelyAdapter)
+
+
+async def test_each_j3_board_stores_only_eligible_jobs_and_shows_in_source_health(sm, monkeypatch):
+    monkeypatch.setattr(intel, "get_sessionmaker", lambda: sm)
+    monkeypatch.setattr("app.connectors.remote_boards.JOBICY_PAUSE", 0)
+    now = datetime.now(UTC)
+    jobicy = lambda r: httpx.Response(200, json={"jobs": [jb(1, "Anywhere", now.isoformat()), jb(2, "USA", now.isoformat())] if r.url.params["geo"] == "anywhere" else [],
+                                                  "hasMore": False})
+    nomads = lambda r: httpx.Response(200, json=[{"url": "https://www.workingnomads.com/job/go/1", "title": "Open", "company_name": "A", "location": "Global",
+                                                   "pub_date": now.isoformat()},
+                                                  {"url": "https://www.workingnomads.com/job/go/2", "title": "Closed", "company_name": "B", "location": "USA only",
+                                                   "pub_date": now.isoformat()}])
+    wwr = lambda r: httpx.Response(200, content=WWR.format(items=wi("a", "Acme: Open", "Anywhere in the World") + wi("b", "Beta: Closed", "USA Only")).encode())
+    boards = [("Jobicy", "api", JobicyAdapter("Jobicy", client(jobicy))), ("Working Nomads", "api", WorkingNomadsAdapter("Working Nomads", client(nomads))),
+              ("We Work Remotely", "feed", WeWorkRemotelyAdapter("We Work Remotely", client=client(wwr)))]
+    async with sm() as s:
+        for name, ctype, _ in boards:
+            await registry.register_source(s, name, ctype)
+            await registry.set_enabled(s, name, ctype, True)
+        await s.commit()
+    for _, _, adapter in boards:
+        out = await run_once(sm, adapter)
+        assert out["status"] == "ok" and out["new"] == 1  # the restricted-country job is dropped before storage
+    async with sm() as s:
+        titles = sorted(r[0] for r in (await s.execute(text("select title from source_events where event_type = 'job'"))).all())
+    assert titles == ["Engineer 1", "Open", "Open"]
+    health = {r["name"]: r for r in await intel.source_health()}
+    assert {"Jobicy", "Working Nomads", "We Work Remotely"} <= set(health) and all(health[n]["enabled"] and health[n]["events_total"] == 1 for n in ("Jobicy", "Working Nomads", "We Work Remotely"))
