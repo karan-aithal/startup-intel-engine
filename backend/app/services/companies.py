@@ -8,7 +8,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors.feed import USER_AGENT
+from app.services.aggregators import is_aggregator
 from app.services.quality import cfg as quality_cfg
+from app.services.safefetch import guarded_client
 
 SUFFIX = re.compile(r"\b(inc|ltd|llc|pvt|private|limited|corp|co|technologies|technology|labs?)\b\.?", re.I)
 NAME_VERB = re.compile(
@@ -98,6 +100,8 @@ async def identify_website(name: str, client: httpx.AsyncClient, domain: str | N
     """Try likely domains; accept one only if its page title / og:site_name carries the company name. Returns evidence."""
     stem = canonical(name).replace(" ", "")
     for dom in ([domain] if domain else [f"{stem}.{t}" for t in TLDS]):
+        if is_aggregator(dom):
+            continue
         try:
             r = await client.get(f"https://{dom}", headers={"User-Agent": USER_AGENT}, follow_redirects=True)
         except httpx.HTTPError:
@@ -149,7 +153,7 @@ async def resolve_pending(sm, limit: int = 10, client: httpx.AsyncClient | None 
     async with sm() as s:
         rows = (await s.execute(text("SELECT id, name, domain, source_event_id FROM company_discovery_candidates WHERE status = 'pending' ORDER BY created_at LIMIT :n"),
                                 {"n": limit})).all()
-    c, done = client or httpx.AsyncClient(timeout=10), 0
+    c, done = client or guarded_client(timeout=10), 0
     try:
         for r in rows:
             async with sm() as s:
