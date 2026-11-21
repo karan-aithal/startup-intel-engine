@@ -18,7 +18,9 @@ DOCS = {"feed": "robots.txt checked; see docs/phase2-proposals.md",
         "hn": "https://hn.algolia.com/api", "sec": "https://www.sec.gov/search-filings/edgar-application-programming-interfaces",
         "greenhouse": "https://developers.greenhouse.io/job-board.html",
         "lever": "https://github.com/lever/postings-api", "ashby": "https://developers.ashbyhq.com",
-        "himalayas": "https://himalayas.app/api", "remotive": "https://remotive.com/api-documentation"}
+        "himalayas": "https://himalayas.app/api", "remotive": "https://remotive.com/api-documentation",
+        "jobicy": "https://jobicy.com/jobs-rss-feed", "workingnomads": "https://www.workingnomads.com/api/exposed_jobs/",
+        "weworkremotely": "https://weworkremotely.com/remote-jobs.rss"}
 
 
 def routes(cfg: dict):
@@ -61,7 +63,7 @@ def routes(cfg: dict):
             poll_interval_seconds=j["poll"], config={"kind": "jooble", "keywords": j["keywords"], "location": j["location"],
                                                       "pages": j.get("pages", 1), "terms_confirmed": bool(j.get("terms_confirmed"))})
     for rb in cfg.get("remote_boards", []):
-        yield rb["name"], "api", dict(category="hiring", access_method=f"{rb['name']} public jobs API (remote jobs open to India only)",
+        yield rb["name"], "feed" if rb["kind"] == "weworkremotely" else "api", dict(category="hiring", access_method=f"{rb['name']} public jobs API (remote jobs open to India only)",
             docs_url=DOCS[rb["kind"]], poll_interval_seconds=rb["poll"], config={"kind": rb["kind"]})
     for provider, tokens in cfg["ats"].items():
         for t in tokens:

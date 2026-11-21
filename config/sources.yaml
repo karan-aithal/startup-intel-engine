@@ -37,9 +37,18 @@ ats_poll: 1800
 # Himalayas (himalayas.app/api, himalayas.app/terms clause 113): "The data refreshes daily, so there is no benefit to polling more often"; keyless
 #   limits are lower than the keyed 60/min and 10,000/day and are not published; 20 jobs a page; show Himalayas as the source and keep applicationLink unchanged.
 #   Poll every 6 h. Collection uses /jobs/api/search (decision 99): two filtered queries, up to 5 pages each, so up to 10 requests a poll.
+# Jobicy (jobicy.com/jobs-rss-feed, read 2026-11-21): credit Jobicy and link to the source; "no more than one automated pass an hour", follow cursor pages in
+#   order, at least 1 s between requests, honour Retry-After; the feed is a 7-day window and new jobs appear 3 h after publication. Filtered to the Anywhere
+#   and APAC slugs (there is no India slug). Poll every 6 h.
+# We Work Remotely (weworkremotely.com/remote-jobs.rss) and Working Nomads (workingnomads.com/api/exposed_jobs/): no terms could be read (WWR's pages blocked
+#   an automated fetch; Working Nomads publishes none). robots.txt allows both. Used on robots.txt alone, as the owner accepted (decision 106). Poll every 6 h,
+#   and the source name shows in the Source column as the link-back.
 remote_boards:
   - {name: Himalayas, kind: himalayas, poll: 21600}
   - {name: Remotive, kind: remotive, poll: 21600}
+  - {name: Jobicy, kind: jobicy, poll: 21600}
+  - {name: We Work Remotely, kind: weworkremotely, poll: 21600}
+  - {name: Working Nomads, kind: workingnomads, poll: 21600}
 
 # Phase 3: dedicated alerts inbox (IMAP). Stays disabled until IMAP_USER and IMAP_PASSWORD are set.
 imap:

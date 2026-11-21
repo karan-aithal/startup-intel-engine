@@ -43,10 +43,11 @@ def build_adapter(name: str, config: dict, *, sec_email: str = "", imap: dict | 
             raise ValueError("Jooble is gated: JOOBLE_API_KEY is not set")
         return JoobleAdapter(name, secrets["jooble_api_key"], secrets.get("jooble_base_url") or "https://jooble.org/api", config["keywords"],
                              config.get("location", "India"), config.get("pages", 1), config.get("region", "india"))
-    if kind in ("himalayas", "remotive"):
-        from app.connectors.remote_boards import HimalayasAdapter, RemotiveAdapter
+    if kind in ("himalayas", "remotive", "jobicy", "workingnomads", "weworkremotely"):
+        from app.connectors import remote_boards as rb
 
-        return (HimalayasAdapter if kind == "himalayas" else RemotiveAdapter)(name)
+        return {"himalayas": rb.HimalayasAdapter, "remotive": rb.RemotiveAdapter, "jobicy": rb.JobicyAdapter, "workingnomads": rb.WorkingNomadsAdapter,
+                "weworkremotely": rb.WeWorkRemotelyAdapter}[kind](name)
     if kind == "ats":
         return AtsAdapter(config["provider"], config["token"])
     raise ValueError(f"unknown connector kind {kind!r} for {name}")
