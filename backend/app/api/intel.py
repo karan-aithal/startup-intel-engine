@@ -3,7 +3,6 @@
 India is derived at read time with the same rule alerts use (pipeline.INDIA over event location, or raw_metadata.region == 'india').
 It is never stored: companies.is_india_linked feeds scoring and stays untouched. A round is India when any of its evidence events is;
 a company is India when any of its rounds or any job on its ATS boards is."""
-import re
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
@@ -11,18 +10,13 @@ from sqlalchemy import text
 
 from app.core.config import get_settings
 from app.db.session import get_sessionmaker
-from app.services import jobfit
-from app.services.geo import JOB_INDIA, REMOTE, classify_geo
-from app.services.pipeline import INDIA
+from app.services.explore import EV_INDIA, JOB_FROM, RX
+from app.services.explore import search as explore_search
 from app.services.portals import SOURCE_HEALTH_SQL, portals
 
 router = APIRouter(prefix="/api", tags=["intel"])
 Region = Literal["all", "india", "global"]
-RX = INDIA.pattern.replace(r"\b", r"\y")  # Postgres ARE: \y is the word boundary, \b is backspace
-EV_INDIA = "(coalesce(e.raw_metadata->>'region', '') = 'india' OR coalesce(e.location, '') ~* :rx)"  # coalesce: NULL would make NOT(...) drop the row
 ROUND_INDIA = f"EXISTS (SELECT 1 FROM evidence ev JOIN source_events e ON e.id = ev.source_event_id WHERE ev.funding_round_id = f.id AND {EV_INDIA})"
-JOB_FROM = """source_events e JOIN source_registry r ON r.id = e.source_id
-    LEFT JOIN ats_boards b ON r.connector_type = 'api' AND r.name = b.provider || ':' || b.board_token"""
 COMPANY_INDIA = f"""(EXISTS (SELECT 1 FROM funding_rounds f WHERE f.company_id = c.id AND {ROUND_INDIA})
     OR EXISTS (SELECT 1 FROM {JOB_FROM} WHERE b.company_id = c.id AND e.event_type = 'job' AND {EV_INDIA}))"""
 
@@ -142,83 +136,13 @@ async def hiring(region: Region = "all", q: str = "", company_id: str = "",
     return {"total": rows[0]["total"] if rows else 0, "items": [{k: v for k, v in r.items() if k != "total"} for r in rows], "top_companies": top}
 
 
-EXPLORE_SCAN = 5000  # newest job events read per request; Python then applies the exact geo rule
-REMOTE_RX = REMOTE.pattern.replace(r"\b", r"\y")
-JOB_RX = JOB_INDIA.pattern.replace(r"\b", r"\y")  # explore's prefilter only: the wider job-location list (geo.PLACES)
-
-
-FIT_ORDER = {"strong": 0, "related": 1, "weak": 2}
-FUNDED = """SELECT DISTINCT ON (f.company_id) f.company_id::text AS cid, f.stage, f.verification_status, coalesce(f.announced_at, f.first_detected_at) AS at
-    FROM funding_rounds f WHERE f.company_id::text = ANY(:ids) AND f.verification_status IN ('VERIFIED', 'PARTIALLY_VERIFIED') AND NOT f.is_rumour
-      AND coalesce(f.announced_at, f.first_detected_at) > now() - make_interval(days => :d)
-    ORDER BY f.company_id, coalesce(f.announced_at, f.first_detected_at) DESC"""
-JOB_STATUS = """SELECT j.source_id::text || ':' || j.external_job_id AS k, j.closed_at IS NULL AS open, j.first_seen_at, j.years_min FROM job_postings j
-    JOIN unnest(CAST(:sids AS text[]), CAST(:exts AS text[])) AS x(sid, ext) ON j.source_id::text = x.sid AND j.external_job_id = x.ext"""
-# Reposts (career-ops detect-reposts.mjs, MIT): the same role listed again under a new id. Same company and same normalised title, two or more ids, first seen on
-# dates at least REPOST_SPAN_DAYS apart, within REPOST_WINDOW_DAYS. A span of zero is a company listing sibling openings at once, not a repost, so a record
-# that has only just been built flags nothing (first_seen is when WE first saw the job).
-REPOST_SPAN_DAYS, REPOST_WINDOW_DAYS = 7, 90
-REPOSTS = f"""SELECT coalesce(company_id::text, lower(company_name)) AS ck, btrim(regexp_replace(lower(title), '[^a-z0-9]+', ' ', 'g')) AS tk
-    FROM job_postings WHERE first_seen_at > now() - interval '{REPOST_WINDOW_DAYS} days' AND coalesce(company_id::text, company_name) IS NOT NULL
-    GROUP BY 1, 2 HAVING count(DISTINCT source_id::text || external_job_id) >= 2 AND max(first_seen_at) - min(first_seen_at) >= interval '{REPOST_SPAN_DAYS} days'"""
-_key = lambda company, title: (str(company or "").lower(), re.sub(r"[^a-z0-9]+", " ", (title or "").lower()).strip())
-
-
 @router.get("/explore")
 async def explore(mode: Literal["all", "india", "remote"] = "all", q: str = "", exclude: str = "", location: str = "", source: str = "",
                   days: int = Query(7, ge=1, le=30), limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
                   sort: Literal["newest", "fit", "company", "funded"] = "newest", status: Literal["open", "all"] = "open") -> dict:
-    """India and remote-open-to-India jobs only. q / exclude match the title and location the job text; each takes comma-separated words (any match).
-    SQL narrows by date and a loose India/remote test; services.geo then decides exactly, so alerts and this page share one rule.
-    counts and sources ignore mode and source, so the tabs can show how many each would give.
-    J5: each row also carries fit / role / seniority (services.jobfit, config/jobs.yaml), a funding badge (a verified or partially verified round in the last
-    funding_window_days) and open (the J1 job record; `status=open` hides jobs it has closed, jobs with no record stay)."""
-    rows = await _q(f"""SELECT e.id, e.title, e.location, e.published_at, e.detected_at, e.source_url, r.name AS source, coalesce(b.company_id, e.company_id) AS company_id,
-        coalesce(c.name, e.company_name) AS company, coalesce(e.raw_metadata->>'region', '') = 'india' AS region_india, e.raw_metadata->>'workplace' AS workplace,
-        e.source_id::text AS sid, left(e.source_event_id, 200) AS ext
-        FROM {JOB_FROM} LEFT JOIN companies c ON c.id = coalesce(b.company_id, e.company_id)
-        WHERE e.event_type = 'job' AND coalesce(e.published_at, e.detected_at) > now() - make_interval(days => :d)
-          AND ({EV_INDIA} OR e.raw_metadata->>'remote' = 'true' OR e.raw_metadata->>'workplace' = 'remote' OR e.location ~* :rrx OR (coalesce(e.location, '') = '' AND e.title ~* :rrx))
-        ORDER BY coalesce(e.published_at, e.detected_at) DESC LIMIT {EXPLORE_SCAN}""", d=days, rrx=REMOTE_RX, rx=JOB_RX)
-    words = lambda s: [w.strip().lower() for w in s.split(",") if w.strip()]
-    want, drop, where = words(q), words(exclude), words(location)
-    found = []
-    for r in rows:
-        title, loc = (r["title"] or "").lower(), (r["location"] or "").lower()
-        region_india = r.pop("region_india")  # a source marked region=india (Jooble) counts even without a location
-        india, remote = classify_geo(r["location"], r["title"], r.pop("workplace"))
-        india = india or region_india
-        if (india or remote) and (not want or any(w in title for w in want)) and not any(w in title for w in drop) \
-                and (not where or any(w in loc for w in where)):
-            found.append({**r, "india": india, "remote": remote, "role": jobfit.role_category(r["title"]), "seniority": jobfit.seniority(r["title"])})
-    ids = list({str(j["company_id"]) for j in found if j["company_id"]})
-    funded = {x["cid"]: x for x in await _q(FUNDED, ids=ids, d=jobfit.cfg()["funding_window_days"])} if ids else {}
-    state = {x["k"]: x for x in await _q(JOB_STATUS, sids=[j["sid"] for j in found], exts=[j["ext"] or "" for j in found])} if found else {}
-    reposted = {(x["ck"], x["tk"]) for x in await _q(REPOSTS)} if found else set()
-    for j in found:
-        f = funded.get(str(j["company_id"]))
-        j["funding"] = {"stage": f["stage"], "status": f["verification_status"], "at": f["at"]} if f else None
-        rec = state.get(f"{j.pop('sid')}:{j.pop('ext')}")  # None: the job has no record
-        j["open"], j["first_seen_at"], j["years_min"] = (rec["open"], rec["first_seen_at"], rec["years_min"]) if rec else (None, None, None)
-        j["above_band"] = bool(j["years_min"] and j["years_min"] > jobfit.cfg()["targets"]["max_years"])
-        j["fit"] = jobfit.fit(j["title"], j["location"], j["remote"], j["years_min"])
-        j["reposted"] = _key(j["company_id"] or j["company"], j["title"]) in reposted
-    found = [j for j in found if status == "all" or j["open"] is not False]
-    picked = [j for j in found if (mode == "all" or j[mode]) and (not source or j["source"] == source)]
-    when = lambda j: (j["published_at"] or j["detected_at"]).timestamp() if (j["published_at"] or j["detected_at"]) else 0
-    picked.sort(key=lambda j: -when(j))  # newest first; the stable sorts below keep it as the tie-break
-    if sort == "fit":
-        picked.sort(key=lambda j: FIT_ORDER[j["fit"]])
-    elif sort == "company":
-        picked.sort(key=lambda j: (j["company"] or "~").lower())
-    elif sort == "funded":
-        picked.sort(key=lambda j: -j["funding"]["at"].timestamp() if j["funding"] and j["funding"]["at"] else 0)
-    by_source: dict[str, int] = {}
-    for j in found:
-        by_source[j["source"]] = by_source.get(j["source"], 0) + 1
-    return {"total": len(picked), "items": picked[offset:offset + limit], "truncated": len(rows) == EXPLORE_SCAN,
-            "counts": {"all": len(found), "india": sum(j["india"] for j in found), "remote": sum(j["remote"] for j in found)},
-            "sources": [{"source": s, "jobs": n} for s, n in sorted(by_source.items(), key=lambda x: -x[1])]}
+    """India and remote-open-to-India jobs only. The query lives in services.explore.search so saved searches (J6) run the very same rule."""
+    async with get_sessionmaker()() as s:
+        return await explore_search(s, mode, q, exclude, location, source, days, limit, offset, sort, status)
 
 
 @router.get("/discovery")

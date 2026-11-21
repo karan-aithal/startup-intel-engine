@@ -24,6 +24,7 @@ from app.db.models.llm import (  # noqa: F401
     LlmRun,
 )
 from app.db.models.ops import AlertDelivery, JobQueue, WorkerHeartbeat  # noqa: F401
+from app.db.models.scans import SavedSearch, SavedSearchRun  # noqa: F401
 from app.db.models.sources import (  # noqa: F401
     Feedback,
     RateLimit,

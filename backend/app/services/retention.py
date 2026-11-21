@@ -32,6 +32,7 @@ PRUNE = {
     "job_queue_dead": "DELETE FROM job_queue WHERE status = 'dead' AND finished_at < now() - interval '90 days'",
     "worker_heartbeats": "DELETE FROM worker_heartbeats WHERE last_seen_at < now() - interval '7 days'",
     "source_runs": "DELETE FROM source_runs WHERE started_at < now() - interval '90 days'",
+    "saved_search_runs": "DELETE FROM saved_search_runs WHERE started_at < now() - interval '90 days'",
 }
 
 

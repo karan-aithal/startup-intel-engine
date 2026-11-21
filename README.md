@@ -29,6 +29,7 @@ The full specification is in [PROMPT.md](PROMPT.md). Decisions made so far are i
 | Jobs J3 | Jobicy, We Work Remotely and Working Nomads boards | Built, tested (318 tests) and enabled live 2026-11-21 (decision 106) |
 | Jobs J4 | Portals tab: board health, counts, enable/disable, re-check, add from a careers URL | Built and tested (342 tests, `tsc`, `eslint`, `next build`), live on the API and dashboard 2026-11-21, not committed (decision 107) |
 | Jobs J5 | Explore v2: fit, role and funding badge, open or closed, sorts, new-since-last-visit dot, measured geo accuracy | Built and tested (444 tests, `tsc`, `eslint`, `next build`), live on the API and dashboard 2026-11-21, not committed; owner label corrections pending (decision 108) |
+| Jobs J6 | Scheduled scans: saved Explore searches run by the worker, one digest per run, `/scans` page, Schedule button on Explore | Built and tested (461 tests, `tsc`, `eslint`), live on the API, worker and dashboard 2026-11-22 (migration `0014` applied after a backup), not committed (decision 110) |
 
 The work goes one phase at a time. Each phase ends with a report and waits for an explicit go.
 

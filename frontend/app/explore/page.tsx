@@ -4,6 +4,7 @@ import styles from "../ui.module.scss";
 import { day, get, href, params, type Sp } from "../lib/api";
 import { Empty, Loading, Pager, Pill } from "../lib/ui";
 import { New, Visit } from "./new";
+import { Schedule } from "./schedule";
 
 type Job = {
   id: string; title: string | null; location: string | null; published_at: string | null; detected_at: string | null; source_url: string | null;
@@ -12,6 +13,7 @@ type Job = {
   funding: { stage: string | null; status: string; at: string | null } | null;
   years_min: number | null; above_band: boolean; reposted: boolean; first_seen_at: string | null;
 };
+type Saved = { id: string; name: string; status: string; filters: Record<string, string | number> };
 type Counts = { all: number; india: number; remote: number };
 type Data = { total: number; items: Job[]; truncated: boolean; counts: Counts; sources: { source: string; jobs: number }[] };
 
@@ -27,6 +29,7 @@ async function Content({ sp }: { sp: Sp }) {
   const status = p.status === "all" ? "all" : "open";
   const keep = { q: p.q, exclude: p.exclude, location: p.location, source: p.source, days, sort, status };
   const d = await get<Data>("/api/explore", { mode, ...keep, offset: p.offset });
+  const saved = await get<{ searches: Saved[] }>("/api/scans").then((x) => x.searches).catch(() => [] as Saved[]);  // chips are a convenience: Explore works without them
   return (
     <>
       <div className={styles.filters}>
@@ -50,6 +53,13 @@ async function Content({ sp }: { sp: Sp }) {
         </div>
       </div>
       <Visit />
+      {saved.length > 0 && (
+        <div className={styles.tabs}>
+          {saved.map((s) => <Link key={s.id} href={href("/explore", { ...s.filters })} title={`Saved search (${s.status})`}>{s.name}</Link>)}
+          <Link href="/scans">Scans →</Link>
+        </div>
+      )}
+      <Schedule filters={{ mode, q: p.q ?? "", exclude: p.exclude ?? "", location: p.location ?? "", source: p.source ?? "", days, sort, status }} />
       <form className={styles.filters}>
         <input type="hidden" name="mode" value={mode} />
         <input type="hidden" name="days" value={days} />

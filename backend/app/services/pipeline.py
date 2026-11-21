@@ -78,9 +78,23 @@ def _fmt(ts, tz: ZoneInfo) -> str:
     return ts.astimezone(tz).strftime("%d %b %Y %H:%M %Z") if ts else "unknown"
 
 
+def format_scan(p: dict, tz_name: str = "Asia/Kolkata", resent: bool = False) -> str:
+    e = html.escape
+    lines = [f"<b>SCHEDULED SCAN</b> · {e(p['search'])}" + (" (resent)" if resent else ""),
+             f"<b>{p['count']}{'+' if p.get('capped') else ''} new match{'es' if p['count'] != 1 else ''}</b>"]
+    for j in p["jobs"]:
+        lines.append(f"• {e(j['title'] or '(untitled)')} — {e(j['company'] or 'unknown')}" + (f" ({e(j['location'])})" if j.get("location") else "") + (f"\n  {e(j['url'])}" if j.get("url") else ""))
+    if p["count"] > len(p["jobs"]):
+        lines.append(f"…and {p['count'] - len(p['jobs'])} more")
+    lines += [f"All matches: {e(p['url'])}", f"Run: {_fmt(p['detected_at'], ZoneInfo(tz_name))}"]
+    return "\n".join(lines)
+
+
 def format_alert(topic: str | None, p: dict, tz_name: str = "Asia/Kolkata", resent: bool = False) -> str:
     """Telegram HTML. Both timestamps appear: when the source published it, and when we first saw it."""
     tz, e = ZoneInfo(tz_name), html.escape
+    if p["label"] == "scan":  # J6 saved-search digest
+        return format_scan(p, tz_name, resent)
     lines = [f"<b>{LABEL_TITLE.get(p['label'], p['label'].upper())}</b> · {e(topic or '')}" + (" (resent)" if resent else ""), f"<b>{e(p['title'] or '')}</b>"]
     if p.get("company"):
         lines.append(f"Company: {e(p['company'])}")
