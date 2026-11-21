@@ -8,9 +8,11 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text
 
+from app.core.config import get_settings
 from app.db.session import get_sessionmaker
 from app.services.geo import JOB_INDIA, REMOTE, classify_geo
 from app.services.pipeline import INDIA
+from app.services.portals import SOURCE_HEALTH_SQL, portals
 
 router = APIRouter(prefix="/api", tags=["intel"])
 Region = Literal["all", "india", "global"]
@@ -177,24 +179,26 @@ async def explore(mode: Literal["all", "india", "remote"] = "all", q: str = "", 
 
 @router.get("/discovery")
 async def discovery() -> dict:
+    cfg = get_settings()
+    async with get_sessionmaker()() as s:
+        boards = (await portals(s, cfg.auto_watch_cap, cfg.auto_board_cap))["company_boards"]  # same rows as Portals, seeded boards included
+    states: dict[str, int] = {}
+    for b in boards:
+        states[b["state"]] = states.get(b["state"], 0) + 1
     return {
         "candidates": await _q("""SELECT d.id, d.name, d.domain, d.status, d.match_confidence, d.matched_company_id, c.name AS matched_company, d.created_at
             FROM company_discovery_candidates d LEFT JOIN companies c ON c.id = d.matched_company_id ORDER BY d.created_at DESC LIMIT 100"""),
         "candidate_status": await _q("SELECT status, count(*) AS n FROM company_discovery_candidates GROUP BY status ORDER BY n DESC"),
-        "boards": await _q("""SELECT b.provider, b.board_token, b.status, b.discovered_via, b.last_job_count, b.company_id, c.name AS company, b.created_at
-            FROM ats_boards b JOIN companies c ON c.id = b.company_id ORDER BY b.created_at DESC LIMIT 100"""),
-        "board_status": await _q("SELECT status, count(*) AS n FROM ats_boards GROUP BY status ORDER BY n DESC"),
+        "boards": [{"provider": b["provider"], "board_token": b["token"], "status": b["state"], "discovered_via": b["discovered_via"],
+                    "last_job_count": b["last_job_count"], "company_id": b["company_id"], "company": b["company"], "created_at": None} for b in boards],
+        "board_status": [{"status": k, "n": n} for k, n in sorted(states.items(), key=lambda x: -x[1])],
         "company_sources": await _q("SELECT kind, status, count(*) AS n FROM company_sources GROUP BY kind, status ORDER BY kind, n DESC"),
     }
 
 
 @router.get("/source-health")
 async def source_health() -> list[dict]:
-    return await _q("""SELECT r.id, r.name, r.connector_type, r.category, r.enabled, r.health_status, r.consecutive_failures, r.last_success_at,
-        r.last_error_at, left(r.last_error, 300) AS last_error, r.circuit_open_until, r.next_poll_at, r.activity_score, r.poll_interval_seconds,
-        (SELECT count(*) FROM source_events e WHERE e.source_id = r.id AND e.detected_at > now() - interval '24 hours') AS events_24h,
-        (SELECT count(*) FROM source_events e WHERE e.source_id = r.id) AS events_total
-        FROM source_registry r ORDER BY r.enabled DESC, (r.health_status = 'HEALTHY'), r.category, r.name""")
+    return await _q(SOURCE_HEALTH_SQL)
 
 
 @router.get("/search")
