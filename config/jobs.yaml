@@ -1,0 +1,20 @@
+# Explore v2 (J5): zero-token fit hint, role category and seniority, all by keyword on the job title. No LLM. Edit and restart the API.
+# Whole words, case-insensitive; "stem:engineer" matches a word that starts with it (engineers, engineering). The seniority rules (guards, roman
+# numerals, leftmost marker) live in services/jobfit.py because a word list cannot express them.
+targets:                     # seniority levels you want; a title with one of these (or none at all) is not "weak"
+  seniority: [intern, junior, mid, senior]
+  max_years: 8                # a description asking more than this many years of experience is above your band (a weak fit; the job is still listed)
+  prefer_places: [bangalore, bengaluru]   # a target level here, or remote, is a "strong" fit; other India places are "related"
+exclude_words: []            # a title with any of these is a weak fit (empty: nothing excluded)
+funding_window_days: 180     # "recently funded": a verified or partially verified round announced within this many days
+role:                        # first match wins
+  data: [data scientist, data analyst, data engineer, machine learning, ml, analytics, analyst, research scientist, ai researcher]
+  design: [designer, design, ux, ui, creative, copywriter, illustrator]
+  product: [product manager, product owner, product lead, product]
+  sales: [sales, account executive, account manager, business development, sdr, bdr, partnerships, revenue]
+  customer: [support, customer success, customer experience, solutions, implementation, onboarding, technical account]
+  marketing: [stem:market, growth, seo, content, community, brand, communications]
+  people: [stem:recruit, talent, hr, people, human resources]
+  finance_legal: [finance, accounting, accountant, legal, counsel, compliance, risk, tax, audit]
+  operations: [operations, program manager, project manager, supply chain, logistics, administrator, assistant, chief of staff]
+  engineering: [stem:engineer, developer, software, sre, devops, backend, frontend, full stack, fullstack, programmer, qa, stem:secur, architect, infrastructure, platform]

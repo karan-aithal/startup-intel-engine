@@ -21,6 +21,7 @@ from app.connectors.api import _get_json
 from app.connectors.base import Capabilities, FetchResult, NormalizedEvent, SourceAdapter
 from app.connectors.feed import FeedAdapter
 from app.services.geo import open_to_india
+from app.services.jdyears import years_required
 
 REMOTIVE_URL = "https://remotive.com/api/remote-jobs"
 HIMALAYAS_SEARCH = "https://himalayas.app/jobs/api/search"  # documented: page=N (20 a page, no cursor), country, worldwide, exclude_worldwide, sort
@@ -31,13 +32,14 @@ HIMALAYAS_PAGES = 5  # ponytail: newest 100 per query per poll (live 2026-11-18:
 
 
 def _event(name: str, board: str, *, id: str, title: str, url: str, company: str | None, restriction: str, open_: bool,
-           published: datetime | None) -> NormalizedEvent | None:
+           published: datetime | None, desc: str | None = None) -> NormalizedEvent | None:
     location = f"Remote ({restriction or 'worldwide'})"
     if not (id and title and url and open_):  # open_: the board's own restriction names India or none (structured allowlist, not services.geo's denylist)
         return None
     return NormalizedEvent(
         source_name=name, source_event_id=id, source_url=url, canonical_url=url, event_type="job", title=title, company_name=company or None,
-        location=location, published_at=published, raw_metadata={"remote": True, "board": board},
+        location=location, published_at=published,
+        raw_metadata={"remote": True, "board": board, **({"years_min": y} if (y := years_required(desc)) else {})},  # the number only: the description is read here and dropped
         permissions_metadata={"store": "title, company, location and link only"})
 
 
@@ -74,7 +76,7 @@ class HimalayasAdapter(SourceAdapter):
         shown = ", ".join(countries) if len(countries) <= 3 else f"{'India and ' if 'India' in countries else ''}{len(countries) - ('India' in countries)} other countries"
         return _event(self.name, "himalayas", id=j.get("guid") or j.get("applicationLink") or "", title=j.get("title") or "",
                       url=j.get("applicationLink") or j.get("guid") or "", company=j.get("companyName"), restriction=shown,
-                      open_=not countries or "India" in countries, published=datetime.fromtimestamp(p, UTC) if p else None)
+                      open_=not countries or "India" in countries, published=datetime.fromtimestamp(p, UTC) if p else None, desc=j.get("description"))
 
     async def health_check(self) -> bool:
         await _get_json(self._client, HIMALAYAS_SEARCH, params={"worldwide": "true", "page": 1})
@@ -101,7 +103,7 @@ class RemotiveAdapter(SourceAdapter):
             published = None
         where = (j.get("candidate_required_location") or "").strip()
         return _event(self.name, "remotive", id=str(j.get("id") or j.get("url") or ""), title=j.get("title") or "", url=j.get("url") or "",
-                      company=j.get("company_name"), restriction=where, open_=open_to_india(where), published=published)
+                      company=j.get("company_name"), restriction=where, open_=open_to_india(where), published=published, desc=j.get("description"))
 
     async def health_check(self) -> bool:
         return True  # a probe is a request, and Remotive allows 4 a day
@@ -156,7 +158,7 @@ class JobicyAdapter(SourceAdapter):
         where = html.unescape(j.get("jobGeo") or "").replace("  ", " ").strip()
         return _event(self.name, "jobicy", id=str(j.get("id") or j.get("url") or ""), title=html.unescape(j.get("jobTitle") or "").strip(),
                       url=j.get("url") or "", company=html.unescape(j.get("companyName") or "").strip(), restriction=where,
-                      open_=open_to_india(where), published=_iso(j.get("pubDate")))
+                      open_=open_to_india(where), published=_iso(j.get("pubDate")), desc=j.get("jobDescription"))
 
     async def health_check(self) -> bool:
         return True  # a probe is a request, and one pass an hour is the limit
@@ -184,7 +186,7 @@ class WorkingNomadsAdapter(SourceAdapter):
         where = html.unescape(j.get("location") or "").strip()
         return _event(self.name, "workingnomads", id=j.get("url") or "", title=html.unescape(j.get("title") or "").strip(), url=j.get("url") or "",
                       company=html.unescape(j.get("company_name") or "").strip(), restriction=where, open_=open_to_india(where),
-                      published=_iso(j.get("pub_date")))
+                      published=_iso(j.get("pub_date")), desc=j.get("description"))
 
     async def health_check(self) -> bool:
         await self.fetch()
@@ -212,7 +214,8 @@ class WeWorkRemotelyAdapter(FeedAdapter):
         where = re.sub(r"\s+", " ", FLAGS.sub("", html.unescape(item.get("country") or ""))).strip() or html.unescape(item.get("region") or "").strip()
         pub = item.get("published_parsed")
         return _event(self.name, "weworkremotely", id=item.get("id") or link, title=role, url=link, company=company, restriction=where,
-                      open_=open_to_india(where), published=datetime.fromtimestamp(calendar.timegm(pub), UTC) if pub else None)
+                      open_=open_to_india(where), published=datetime.fromtimestamp(calendar.timegm(pub), UTC) if pub else None,
+                      desc=item.get("summary"))
 
     async def get_capabilities(self) -> Capabilities:
         return Capabilities(public_feed=True, permissions="public RSS; no terms could be read (robots.txt allows)", quota="none published (poll every 6 h)")

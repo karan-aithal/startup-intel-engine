@@ -28,13 +28,24 @@ FILLER = re.compile(REMOTE.pattern + "|" + WORLDWIDE.pattern + r"|\b(fully|100|f
                     r"work|home|from|or|and|the|in|only|eligible|open|to)\b", re.IGNORECASE)
 
 
+HYBRID_LOC = re.compile(r"\b(?:hybrid|on[- ]?site|in[- ]office|office[- ]based)\b", re.IGNORECASE)  # the location text itself says it is not remote
+NEGATOR = re.compile(r"\b(?:except|excluding|excluded|outside|not|ex|other\s+than|besides)\b[^;,)]{0,30}$", re.IGNORECASE)
+NEGATED_AFTER = re.compile(r"^[^;,(]{0,12}\b(?:excluded|not\s+(?:eligible|available|allowed))\b", re.IGNORECASE)
+
+
+def names_india(loc: str) -> bool:
+    """An Indian place is named and not excluded: "Remote Worldwide except India", "Remote, outside India" and "India excluded" do not count.
+    Whitespace and dash variants are folded first (job boards ship no-break spaces and en dashes; career-ops fixed the same in its location filter)."""
+    return any(not (NEGATOR.search(loc[:m.start()]) or NEGATED_AFTER.match(loc[m.end():])) for m in JOB_INDIA.finditer(loc))
+
+
 def classify_geo(location: str | None, title: str | None = None, workplace: str | None = None) -> tuple[bool, bool]:
     """(india, remote_open_to_india). Both can be true ("Remote, India").
     `workplace` is the ATS's own remote | hybrid | onsite field (Lever, Ashby; official docs). It settles the ambiguous cases only: hybrid or onsite is never
     remote, and a remote job with no location is remote. It never widens a named place: "Remote" + workplace remote + "California" is still limited."""
-    loc = (location or "").strip()
-    india = bool(JOB_INDIA.search(loc))
-    if workplace in ("hybrid", "onsite"):
+    loc = re.sub(r"[\s\u00a0\u2007\u202f]+", " ", re.sub(r"[\u2010-\u2015\u2212]", "-", (location or ""))).strip()
+    india = names_india(loc)
+    if workplace in ("hybrid", "onsite") or HYBRID_LOC.search(loc):
         marked = False
     elif workplace == "remote" and not NOT_REMOTE.search(loc):
         marked = True
@@ -44,7 +55,8 @@ def classify_geo(location: str | None, title: str | None = None, workplace: str 
         t = title or ""
         marked = bool(REMOTE.search(t)) and not NOT_REMOTE.search(t)  # the title only counts when the source gave no location
     unplaced = not re.sub(r"[\W_]+", " ", FILLER.sub(" ", loc)).strip()  # nothing but remote / worldwide words
-    return india, marked and (india or unplaced or bool(WORLDWIDE.search(loc) and not EXCEPT.search(loc)))
+    named = JOB_INDIA.search(loc) and not india  # India is named only to be excluded: never open to India
+    return india, marked and not named and (india or unplaced or bool(WORLDWIDE.search(loc) and not EXCEPT.search(loc)))
 
 
 def open_to_india(restriction: str | None) -> bool:
