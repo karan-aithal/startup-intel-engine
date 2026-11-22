@@ -51,15 +51,15 @@ async function Content({ sp }: { sp: Sp }) {
       </div>
       <div className={styles.filters}>
         <div className={styles.tabs}>
-          {TABS.map((t) => <Link key={t} href={href("/pipeline", { tab: t })} className={t === tab ? styles.on : ""}>{label(t)} ({d.counts[t] ?? 0})</Link>)}
+          {TABS.map((t) => <Link key={t} href={href("/pipeline", { tab: t })} className={t === tab ? styles.on : ""} aria-current={t === tab ? "page" : undefined}>{label(t)} ({d.counts[t] ?? 0})</Link>)}
         </div>
       </div>
       <div className={styles.filters}>
         <div className={styles.tabs}>
-          {sorts.map(([v, l]) => <Link key={v} href={href("/pipeline", { ...keep, sort: v })} className={v === sort ? styles.on : ""}>{l}</Link>)}
+          {sorts.map(([v, l]) => <Link key={v} href={href("/pipeline", { ...keep, sort: v })} className={v === sort ? styles.on : ""} aria-current={v === sort ? "page" : undefined}>{l}</Link>)}
         </div>
-        {inbox && <div className={styles.tabs}>{MODES.map(([m, l]) => <Link key={m} href={href("/pipeline", { ...keep, mode: m })} className={m === mode ? styles.on : ""}>{l}</Link>)}</div>}
-        {inbox && <div className={styles.tabs}>{DAYS.map(([v, l]) => <Link key={v} href={href("/pipeline", { ...keep, days: v })} className={v === days ? styles.on : ""}>{l}</Link>)}</div>}
+        {inbox && <div className={styles.tabs}>{MODES.map(([m, l]) => <Link key={m} href={href("/pipeline", { ...keep, mode: m })} className={m === mode ? styles.on : ""} aria-current={m === mode ? "page" : undefined}>{l}</Link>)}</div>}
+        {inbox && <div className={styles.tabs}>{DAYS.map(([v, l]) => <Link key={v} href={href("/pipeline", { ...keep, days: v })} className={v === days ? styles.on : ""} aria-current={v === days ? "page" : undefined}>{l}</Link>)}</div>}
       </div>
       <form className={styles.filters}>
         <input type="hidden" name="tab" value={tab} />

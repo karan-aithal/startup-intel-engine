@@ -43,7 +43,7 @@ async function Content({ sp }: { sp: Sp }) {
       </p>
       {d.searches.length ? (
         <div className={styles.scroll}>
-          <table className={styles.table}>
+          <table className={styles.table} aria-label="Saved searches">
             <thead><tr><th>Search</th><th>Filters</th><th>Schedule</th><th>Status</th><th>Last run</th><th>Next run</th><th>Runs</th><th>New (last)</th><th>Actions</th></tr></thead>
             <tbody>{d.searches.map((s) => (
               <tr key={s.id}>
@@ -55,7 +55,7 @@ async function Content({ sp }: { sp: Sp }) {
                 <td>{s.status === "active" ? when(s.next_run_at) : "—"}</td>
                 <td>{s.runs} ({rate(s.runs_ok, s.runs)} ok)</td>
                 <td>{s.last_new ?? "—"}</td>
-                <td><RowActions id={s.id} status={s.status} /></td>
+                <td><RowActions id={s.id} status={s.status} name={s.name} /></td>
               </tr>
             ))}</tbody>
           </table>
@@ -65,7 +65,7 @@ async function Content({ sp }: { sp: Sp }) {
       <h2>Run history{p.search ? <> · <Link href="/scans">all searches</Link></> : ""}</h2>
       {d.runs.length ? (
         <div className={styles.scroll}>
-          <table className={styles.table}>
+          <table className={styles.table} aria-label="Run history">
             <thead><tr><th>Search</th><th>Started</th><th>State</th><th>Took</th><th>Matches</th><th>New</th><th>Error</th></tr></thead>
             <tbody>{d.runs.map((r) => (
               <tr key={r.id}>
@@ -83,7 +83,7 @@ async function Content({ sp }: { sp: Sp }) {
         Details and failures are on <Link href="/sources">Source Health</Link>.
       </p>
       <div className={styles.scroll}>
-        <table className={styles.table}>
+        <table className={styles.table} aria-label="Collection schedule">
           <thead><tr><th>Source</th><th>Health</th><th>Last success</th><th>Next poll</th><th>New in 24 h</th></tr></thead>
           <tbody>{d.schedule.map((s) => (
             <tr key={s.id}><td>{s.name}</td><td><Pill v={s.health_status} /></td><td>{when(s.last_success_at)}</td><td>{when(s.next_poll_at)}</td><td>{s.events_24h}</td></tr>

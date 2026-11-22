@@ -36,7 +36,7 @@ async function Content() {
 
       <h2>Company boards</h2>
       <div className={styles.scroll}>
-        <table className={styles.table}>
+        <table className={styles.table} aria-label="Company boards">
           <thead><tr><th>Company / board</th><th>State</th><th>Open</th><th>India</th><th>Remote</th><th>Listed last poll</th><th>Last success</th><th>Found via</th><th>Actions</th></tr></thead>
           <tbody>{d.company_boards.map((b) => (
             <tr key={b.name}>
@@ -46,7 +46,7 @@ async function Content() {
               </td>
               <td><Pill v={b.state} />{b.small_board && <> <Pill v="small board" /></>}{b.state === "broken" && b.last_error && <><br /><span className={styles.muted}>{b.last_error.slice(0, 80)}</span></>}</td>
               <td>{b.open}</td><td>{b.india}</td><td>{b.remote}</td><td>{b.last_job_count ?? "—"}</td><td>{when(b.last_success_at)}</td><td>{b.discovered_via ?? "—"}</td>
-              <td><RowActions routeId={b.route_id} enabled={b.enabled} state={b.state} /></td>
+              <td><RowActions routeId={b.route_id} enabled={b.enabled} state={b.state} name={b.name} /></td>
             </tr>
           ))}</tbody>
         </table>
@@ -55,12 +55,12 @@ async function Content() {
       <h2>Job boards</h2>
       <p className={styles.muted}>Board-wide sources: only jobs open to India are stored. Jooble stays off until its terms and key are set in the config.</p>
       <div className={styles.scroll}>
-        <table className={styles.table}>
+        <table className={styles.table} aria-label="Job boards">
           <thead><tr><th>Board</th><th>State</th><th>Open</th><th>India</th><th>Remote</th><th>New in 24 h</th><th>Last success</th><th>Actions</th></tr></thead>
           <tbody>{d.job_boards.map((b) => (
             <tr key={b.name}>
               <td>{b.name}</td><td><Pill v={b.state} /></td><td>{b.open}</td><td>{b.india}</td><td>{b.remote}</td><td>{b.events_24h ?? 0}</td><td>{when(b.last_success_at)}</td>
-              <td>{b.kind === "jooble" ? <span className={styles.muted}>gated</span> : <RowActions routeId={b.route_id} enabled={b.enabled} state={b.state} />}</td>
+              <td>{b.kind === "jooble" ? <span className={styles.muted}>gated</span> : <RowActions routeId={b.route_id} enabled={b.enabled} state={b.state} name={b.name} />}</td>
             </tr>
           ))}</tbody>
         </table>
@@ -69,7 +69,7 @@ async function Content() {
       <h2>Watched companies with no board</h2>
       {d.no_ats.length ? (
         <div className={styles.scroll}>
-          <table className={styles.table}>
+          <table className={styles.table} aria-label="Watched companies with no board">
             <thead><tr><th>Company</th><th>Website</th><th>Careers page</th></tr></thead>
             <tbody>{d.no_ats.map((c) => (
               <tr key={c.company_id}>

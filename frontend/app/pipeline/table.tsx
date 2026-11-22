@@ -56,10 +56,10 @@ export function Table({ rows, inbox, heads }: { rows: Row[]; inbox: boolean; hea
             </button>
           </>
         )}
-        {msg && <span className={styles.muted}>{msg}</span>}
+        <span role="status" className={styles.muted}>{msg}</span>
       </div>
       <div className={styles.scroll}>
-        <table className={styles.table}>
+        <table className={styles.table} aria-label="Tracked jobs">
           <thead><tr>
             <th><input type="checkbox" checked={all} onChange={() => setSel(all ? new Set() : new Set(rows.map((r) => r.id)))} aria-label="Select all rows on this page" /></th>
             <th>Title</th><th>Company</th><th>Location</th><th>{heads[0]}</th><th>{heads[1]}</th>{inbox && <th></th>}
@@ -75,7 +75,7 @@ export function Table({ rows, inbox, heads }: { rows: Row[]; inbox: boolean; hea
               </td>
               <td>{r.companyId ? <Link href={`/companies/${r.companyId}`}>{r.company}</Link> : (r.company ?? "—")}</td>
               <td>{r.location ?? "—"}</td><td>{r.a}</td><td>{r.b}</td>
-              {inbox && <td><button type="button" disabled={busy} onClick={() => go([r.id], "saved")}>Save</button> <button type="button" disabled={busy} onClick={() => go([r.id], "skipped")}>Skip</button></td>}
+              {inbox && <td><button type="button" disabled={busy} aria-label={`Save ${r.title}`} onClick={() => go([r.id], "saved")}>Save</button> <button type="button" disabled={busy} aria-label={`Skip ${r.title}`} onClick={() => go([r.id], "skipped")}>Skip</button></td>}
             </tr>
           ))}</tbody>
         </table>

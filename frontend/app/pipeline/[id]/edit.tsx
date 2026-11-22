@@ -45,7 +45,7 @@ export function Edit({ job }: { job: Job }) {
         {sure
           ? <button type="button" onClick={restore}>Confirm: delete this record and its history</button>
           : <button type="button" onClick={() => setSure(true)}>Back to Inbox</button>}
-        {msg && <span className={styles.muted}> {msg}</span>}
+        <span role="status" className={styles.muted}> {msg}</span>
       </span>
     </form>
   );

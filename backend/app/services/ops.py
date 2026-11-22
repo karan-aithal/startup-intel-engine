@@ -55,6 +55,13 @@ METRICS = [
     ("jobs_discovered_total", "counter", "Job events stored", "SELECT count(*) AS v FROM source_events WHERE event_type = 'job'"),
     ("worker_heartbeat_age_seconds", "gauge", "Seconds since the newest worker heartbeat",
      "SELECT extract(epoch from now() - max(last_seen_at)) AS v FROM worker_heartbeats"),
+    # Jobs track (J9). Saved-search runs are pruned at 90 days, so that one is a gauge over the kept history.
+    ("saved_searches", "gauge", "Saved searches by status", "SELECT status, count(*) AS v FROM saved_searches GROUP BY 1"),
+    ("saved_search_runs", "gauge", "Saved-search runs kept in the 90-day history, by state",
+     "SELECT state, count(*) AS v FROM saved_search_runs GROUP BY 1"),
+    ("saved_search_last_run_age_seconds", "gauge", "Seconds since an active saved search last ran",
+     "SELECT name AS search, extract(epoch from now() - last_run_at) AS v FROM saved_searches WHERE status = 'active'"),
+    ("tracked_jobs", "gauge", "Tracked jobs by pipeline status", "SELECT status, count(*) AS v FROM tracked_jobs GROUP BY 1"),
 ]
 
 
@@ -62,14 +69,44 @@ def _esc(v) -> str:
     return str(v).replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
 
 
+def _emit(out: list[str], name: str, kind: str, help_: str, rows) -> None:
+    out += [f"# HELP {name} {help_}", f"# TYPE {name} {kind}"]
+    for row in rows:
+        labels = ",".join(f'{k}="{_esc(v)}"' for k, v in row.items() if k != "v")
+        if row["v"] is not None:
+            out.append(f"{name}{{{labels}}} {float(row['v'])}" if labels else f"{name} {float(row['v'])}")
+
+
+async def jobs_track_rows(s) -> list[tuple[str, str, str, list[dict]]]:
+    """Jobs-track numbers whose rule lives in Python (board state, geo, follow-up cadence), so the metrics reuse that one rule instead of a copy in SQL.
+    Costs about 0.15 s per scrape on the live data (30 s scrape interval)."""
+    from app.core.config import get_settings
+    from app.services import followups, portals
+
+    cfg = get_settings()
+    p = await portals.portals(s, cfg.auto_watch_cap, cfg.auto_board_cap)
+    boards = [*p["company_boards"], *p["job_boards"]]
+    by: dict[tuple[str, str], int] = {}
+    for b in boards:  # by provider, not by board: one series per provider keeps the label count small
+        src = b["provider"] if b["kind"] in ("company", "seeded") else b["name"]
+        for scope in ("open", "india", "remote"):
+            by[(src, scope)] = by.get((src, scope), 0) + b[scope]
+    out = [("boards_by_state", "gauge", "Job boards and company boards by Portals state (live, empty, broken, pending, disabled, candidate, no_ats)",
+            [{"state": k, "v": v} for k, v in sorted(p["states"].items())]),
+           ("jobs_open", "gauge", "Open jobs by source and scope (open = all, india = India, remote = remote open to India)",
+            [{"source": k[0], "scope": k[1], "v": v} for k, v in sorted(by.items())])]
+    f = await followups.overview(s)
+    if f["enabled"]:
+        out.append(("followups_by_urgency", "gauge", "Tracked jobs by follow-up verdict", [{"urgency": k, "v": v} for k, v in f["tiles"].items()]))
+    return out
+
+
 async def metrics_text(s) -> str:
-    out = []
+    out: list[str] = []
     for name, kind, help_, sql in METRICS:
-        out += [f"# HELP {name} {help_}", f"# TYPE {name} {kind}"]
-        for row in (await s.execute(text(sql))).mappings():
-            labels = ",".join(f'{k}="{_esc(v)}"' for k, v in row.items() if k != "v")
-            if row["v"] is not None:
-                out.append(f"{name}{{{labels}}} {float(row['v'])}" if labels else f"{name} {float(row['v'])}")
+        _emit(out, name, kind, help_, (await s.execute(text(sql))).mappings())
+    for name, kind, help_, rows in await jobs_track_rows(s):
+        _emit(out, name, kind, help_, rows)
     return "\n".join(out) + "\n"
 
 
@@ -99,6 +136,24 @@ async def problems(s, *, llm_enabled: bool = False, backup_dir: Path | None = No
            AND coalesce(sum(u.items_fetched) FILTER (WHERE u.started_at <= now() - interval '24 hours'), 0) >= 5"""))).all():
         out.append((f"source_silent:{r.id}:{_epoch(r.last_items)}",
                     f"Silent source: {r.name} ({r.connector_type}) answers but has returned no items for 24 h (last items {r.last_items:%Y-%m-%d %H:%M} UTC)."))
+
+    # 2b. Jobs track (J9). A saved search whose last 3 runs all failed (the watermark does not move on failure, so nothing is lost, but no digest is sent).
+    # The episode id is the last good run, so it alerts once until a run succeeds.
+    for r in (await s.execute(text("""SELECT s.id, s.name, coalesce(max(u.run_no) FILTER (WHERE u.state = 'ok'), 0) AS last_ok,
+            (array_agg(u.error ORDER BY u.run_no DESC))[1] AS last_error
+        FROM saved_searches s JOIN saved_search_runs u ON u.search_id = s.id WHERE s.status = 'active' GROUP BY s.id, s.name
+        HAVING (SELECT count(*) FROM (SELECT state FROM saved_search_runs WHERE search_id = s.id ORDER BY run_no DESC LIMIT 3) x WHERE state = 'error') = 3"""))).all():
+        out.append((f"scan_failing:{r.id}:{r.last_ok}", f"Saved search failing: '{r.name}' failed its last 3 runs. {(r.last_error or '').splitlines()[0][:150] if r.last_error else ''}"))
+
+    # 2c. A board Portals calls broken that source_down does not already cover: circuit open, or no success for 3 days, with fewer than 3 failures in a row.
+    from app.services.portals import JOB_BOARD_KINDS, STALE
+
+    for r in (await s.execute(text("""SELECT id, name, last_success_at, circuit_open_until FROM source_registry
+            WHERE enabled AND config->>'kind' = ANY(CAST(:kinds AS text[])) AND consecutive_failures < :n
+              AND (circuit_open_until > now() OR last_success_at < now() - make_interval(secs => :stale))"""),
+                              {"kinds": ["ats", *JOB_BOARD_KINDS], "n": FAILURES_UNAVAILABLE, "stale": STALE.total_seconds()})).all():
+        why = "its circuit breaker is open" if r.circuit_open_until and r.circuit_open_until > now else f"no success since {r.last_success_at:%Y-%m-%d %H:%M} UTC"
+        out.append((f"board_broken:{r.id}:{_epoch(r.last_success_at)}", f"Board broken: {r.name}, {why}. See /portals."))
 
     # 3. Jobs that ran out of retries in the last day, and jobs stuck waiting (model jobs are excluded while the model is off).
     skip = [] if llm_enabled else ["llm_enrich"]
