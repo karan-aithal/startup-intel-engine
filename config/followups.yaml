@@ -1,0 +1,16 @@
+# Follow-up reminders (J8). Edit and save: read on every request, no restart. Reminders only: nothing here sends email or messages.
+# Cadence numbers are career-ops's defaults (followup-cadence.mjs). Days count from the day a job entered its current status.
+enabled: true                    # false: the Follow-ups page and nav link are hidden, writes are refused and no reminders are queued
+cadence:
+  applied_first_days: 7          # applied: first follow-up this many days after applying
+  applied_repeat_days: 7         # applied: then every this many days after the last follow-up
+  applied_max_followups: 2       # applied: after this many follow-ups the job is "cold" and stops reminding (a pinned date revives it)
+  responded_first_days: 1        # responded and assessment: first follow-up this many days after the status began
+  responded_repeat_days: 3       # responded, assessment and interview: every this many days after the last follow-up
+  interview_thankyou_days: 1     # interview: the thank-you is due this many days after the interview status began
+channels: [Email, LinkedIn, Phone, Other]
+reminders:
+  timezone: Asia/Kolkata         # day boundaries and the hours below
+  hour: 10                       # a due reminder is queued from this hour on
+  quiet_from: 21                 # no reminders from this hour (a reminder that falls here waits until `hour`) ...
+  quiet_until: 9                 # ... to this hour; the window may cross midnight

@@ -90,11 +90,26 @@ def format_scan(p: dict, tz_name: str = "Asia/Kolkata", resent: bool = False) ->
     return "\n".join(lines)
 
 
+def format_followup(p: dict, tz_name: str = "Asia/Kolkata", resent: bool = False) -> str:
+    e = html.escape
+    lines = [f"<b>FOLLOW-UP DUE</b> · {e(p['status'])}" + (" (resent)" if resent else ""),
+             f"<b>{e(p['title'])}</b>" + (f" — {e(p['company'])}" if p.get("company") else ""),
+             f"Due {e(p['due'])} · {p['days_since']} days in {e(p['status'])} · {p['count']} follow-up{'s' if p['count'] != 1 else ''} so far"]
+    if p.get("contact"):
+        lines.append(f"Contact: {e(p['contact'])}")
+    if p.get("job_url"):
+        lines.append(e(p["job_url"]))
+    lines += [f"Log it: {e(p['url'])}", f"Checked: {_fmt(p['detected_at'], ZoneInfo(tz_name))}"]
+    return "\n".join(lines)
+
+
 def format_alert(topic: str | None, p: dict, tz_name: str = "Asia/Kolkata", resent: bool = False) -> str:
     """Telegram HTML. Both timestamps appear: when the source published it, and when we first saw it."""
     tz, e = ZoneInfo(tz_name), html.escape
     if p["label"] == "scan":  # J6 saved-search digest
         return format_scan(p, tz_name, resent)
+    if p["label"] == "followup":  # J8 reminder
+        return format_followup(p, tz_name, resent)
     lines = [f"<b>{LABEL_TITLE.get(p['label'], p['label'].upper())}</b> · {e(topic or '')}" + (" (resent)" if resent else ""), f"<b>{e(p['title'] or '')}</b>"]
     if p.get("company"):
         lines.append(f"Company: {e(p['company'])}")
