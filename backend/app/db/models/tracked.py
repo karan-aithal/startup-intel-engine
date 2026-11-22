@@ -1,7 +1,7 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, String, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, Date, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -32,6 +32,8 @@ class TrackedJob(Base, Timestamps):
     next_step: Mapped[str | None] = mapped_column(String(300))
     applied_at = ts(default_now=False)  # set when the job first becomes "applied"; drives J8
     status_changed_at = ts()
+    next_pin_on: Mapped[date | None] = mapped_column(Date)  # J8: a pinned next follow-up date; it overrides the cadence until a follow-up is logged
+    reminders_stopped_at = ts(default_now=False)  # J8: set = no reminders for this job; the next logged follow-up clears it
     __table_args__ = (
         UniqueConstraint("source_id", "external_job_id", name="uq_tracked_jobs_job"),
         CheckConstraint("status in (%s)" % ",".join(f"'{s}'" for s in STATES), name="status"),

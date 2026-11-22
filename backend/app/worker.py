@@ -18,7 +18,7 @@ from app.connectors.runner import run_once
 from app.core.config import get_settings
 from app.core.logging import env_file_warning, setup_logging
 from app.db.session import get_engine, get_sessionmaker
-from app.services import ats, companies, jobs, ops, queue, retention, scans
+from app.services import ats, companies, followups, jobs, ops, queue, retention, scans
 from app.services.correlate import correlate_all
 from app.services.discovery import discover_pending
 from app.services.expansion import demote_sources, expand_sources, sync_github_orgs
@@ -203,6 +203,7 @@ async def _run(sm, sink, cfg, beat):
         _loop("jobs", lambda: process_jobs(sm), 2),
         _loop("portal_checks", lambda: portal_checks(sm, cfg), 5),
         _loop("scans", lambda: scans.run_due(sm), 30),
+        _loop("followups", lambda: followups.remind_due(sm), 300),
         _loop("alerts", lambda: deliver_pending(sm, sink, cfg.display_timezone), 5),
         _loop("heartbeat", beat, 30),
         _loop("discovery", lambda: discover_pending(sm), 600),

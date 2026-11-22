@@ -289,21 +289,27 @@ async def test_save_move_edit_and_restore_over_http(api, sm):
 # ---------- migration ----------
 
 async def test_migration_0015_matches_the_orm_models(engine):
-    """Runs 0015's upgrade() in the scratch schema (its tables' parents already exist from the ORM fixture) and diffs the result against the models.
-    The tables the migration made are left in place, like the ORM ones, so later tests find a full schema."""
+    """Replays the real chain (0015, then 0016 which adds J8's columns and table) in the scratch schema and diffs the result against the models.
+    The tables the migrations made are left in place, like the ORM ones, so later tests find a full schema."""
     from importlib.util import module_from_spec, spec_from_file_location
     from pathlib import Path
-    spec = spec_from_file_location("m0015", Path(__file__).parents[1] / "alembic/versions/0015_tracked_jobs.py")
-    m = module_from_spec(spec)
-    spec.loader.exec_module(m)
-    names = {"tracked_jobs", "tracked_job_events"}
+
+    def load(name, file):
+        spec = spec_from_file_location(name, Path(__file__).parents[1] / "alembic/versions" / file)
+        m = module_from_spec(spec)
+        spec.loader.exec_module(m)
+        return m
+
+    chain = [load("m0015", "0015_tracked_jobs.py"), load("m0016", "0016_followups.py")]
+    names = {"tracked_jobs", "tracked_job_events", "followup_log"}
     async with engine.begin() as c:
-        await c.execute(text("DROP TABLE IF EXISTS tracked_job_events, tracked_jobs CASCADE"))
+        await c.execute(text("DROP TABLE IF EXISTS followup_log, tracked_job_events, tracked_jobs CASCADE"))
 
         def go(sync):
             ctx = MigrationContext.configure(sync, opts={"include_object": lambda o, n, t, r, cn: (n in names if t == "table" else o.table.name in names)})
             with Operations.context(ctx):
-                m.upgrade()
+                for m in chain:
+                    m.upgrade()
             return compare_metadata(ctx, Base.metadata)
 
         assert await c.run_sync(go) == []
