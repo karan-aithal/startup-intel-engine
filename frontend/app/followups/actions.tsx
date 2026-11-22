@@ -56,7 +56,7 @@ export function Tools({ e, channels, today }: { e: Entry; channels: string[]; to
           ))}
         </ul>
       )}
-      {msg && <p className={styles.muted}>{msg}</p>}
+      <p role="status" className={styles.muted}>{msg}</p>
     </details>
   );
 }

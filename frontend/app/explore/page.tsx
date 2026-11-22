@@ -37,17 +37,17 @@ async function Content({ sp }: { sp: Sp }) {
       <div className={styles.filters}>
         <div className={styles.tabs}>
           {MODES.map(([m, label]) => (
-            <Link key={m} href={href("/explore", { ...keep, mode: m })} className={m === mode ? styles.on : ""}>{label} ({d.counts[m]})</Link>
+            <Link key={m} href={href("/explore", { ...keep, mode: m })} className={m === mode ? styles.on : ""} aria-current={m === mode ? "page" : undefined}>{label} ({d.counts[m]})</Link>
           ))}
         </div>
         <div className={styles.tabs}>
           {DAYS.map(([v, label]) => (
-            <Link key={v} href={href("/explore", { ...keep, days: v, mode })} className={v === days ? styles.on : ""}>{label}</Link>
+            <Link key={v} href={href("/explore", { ...keep, days: v, mode })} className={v === days ? styles.on : ""} aria-current={v === days ? "page" : undefined}>{label}</Link>
           ))}
         </div>
         <div className={styles.tabs}>
           {SORTS.map(([v, label]) => (
-            <Link key={v} href={href("/explore", { ...keep, sort: v, mode })} className={v === sort ? styles.on : ""}>{label}</Link>
+            <Link key={v} href={href("/explore", { ...keep, sort: v, mode })} className={v === sort ? styles.on : ""} aria-current={v === sort ? "page" : undefined}>{label}</Link>
           ))}
         </div>
         <div className={styles.tabs}>
@@ -83,7 +83,7 @@ async function Content({ sp }: { sp: Sp }) {
       </form>
       {d.items.length ? (
         <div className={styles.scroll}>
-          <table className={styles.table}><thead><tr><th>Title</th><th>Company</th><th>Location</th><th>Fit</th><th>Role</th><th>Funding</th><th>Posted</th><th>Source</th><th>Pipeline</th></tr></thead>
+          <table className={styles.table} aria-label="Jobs"><thead><tr><th>Title</th><th>Company</th><th>Location</th><th>Fit</th><th>Role</th><th>Funding</th><th>Posted</th><th>Source</th><th>Pipeline</th></tr></thead>
             <tbody>{d.items.map((j) => (
               <tr key={j.id}>
                 <td>{j.source_url ? <a href={j.source_url} rel="noopener noreferrer">{j.title ?? "(untitled)"}</a> : (j.title ?? "(untitled)")}<New at={j.first_seen_at ?? j.detected_at} />{j.open === false && <> <Pill v="Closed" /></>}{j.reposted && <> <Pill v="Reposted" /></>}</td>

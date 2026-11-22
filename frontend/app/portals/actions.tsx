@@ -16,7 +16,7 @@ async function post(path: string, body: unknown): Promise<{ ok: boolean; data: R
 
 const why = (d: Reply) => (typeof d?.detail === "string" ? d.detail : "Request failed");
 
-export function RowActions({ routeId, enabled, state }: { routeId: string | null; enabled: boolean; state: string }) {
+export function RowActions({ routeId, enabled, state, name }: { routeId: string | null; enabled: boolean; state: string; name: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -31,13 +31,13 @@ export function RowActions({ routeId, enabled, state }: { routeId: string | null
   };
   return (
     <span>
-      <button type="button" disabled={busy} onClick={() => run(`/api/portals/${routeId}/enabled`, { enabled: !enabled }, enabled ? "Disabled" : "Enabled")}>
+      <button type="button" disabled={busy} aria-label={`${enabled ? "Disable" : "Enable"} ${name}`} onClick={() => run(`/api/portals/${routeId}/enabled`, { enabled: !enabled }, enabled ? "Disabled" : "Enabled")}>
         {enabled ? "Disable" : "Enable"}
       </button>{" "}
       {enabled && state !== "candidate" && (
-        <button type="button" disabled={busy} onClick={() => run(`/api/portals/${routeId}/recheck`, {}, "Re-check queued; the worker polls it within seconds")}>Re-check</button>
+        <button type="button" disabled={busy} aria-label={`Re-check ${name}`} onClick={() => run(`/api/portals/${routeId}/recheck`, {}, "Re-check queued; the worker polls it within seconds")}>Re-check</button>
       )}
-      {note && <span className={styles.muted}> {note}</span>}
+      <span role="status" className={styles.muted}> {note}</span>
     </span>
   );
 }
@@ -81,7 +81,7 @@ export function AddPortal() {
       )}
       <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Careers or board URL, e.g. https://acme.com/careers" aria-label="Careers URL" size={44} />
       <button type="submit">Add portal</button>
-      {msg && <span className={styles.muted}>{msg}</span>}
+      <span role="status" className={styles.muted}>{msg}</span>
     </form>
   );
 }

@@ -29,7 +29,7 @@ async function Content() {
       </div>
       {items.length ? (
         <div className={styles.scroll}>
-          <table className={styles.table}>
+          <table className={styles.table} aria-label="Follow-ups">
             <thead><tr><th>Job</th><th>Status</th><th>Verdict</th><th>Next</th><th>In status</th><th>Follow-ups</th><th>Contact</th><th>Actions</th></tr></thead>
             <tbody>{items.map((e) => (
               <tr key={e.id}>

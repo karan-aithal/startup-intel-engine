@@ -17,3 +17,8 @@ groups:
         for: 10m
       - alert: AlertDeliveryFailing
         expr: increase(telegram_delivery_failures_total[1h]) > 0
+      # Jobs track (J9). The watchdog covers the same ground from the database: a saved search failing 3 runs in a row, and a board source_down or board_broken
+      # (no per-search "not running" rule here: a search may run every few days, so no single age limit fits).
+      - alert: BoardBroken
+        expr: sum(boards_by_state{state="broken"}) > 0
+        for: 30m

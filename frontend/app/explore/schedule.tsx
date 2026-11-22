@@ -33,7 +33,7 @@ export function Schedule({ filters }: { filters: Record<string, string> }) {
           <button type="submit">Save scan</button> <button type="button" onClick={() => setOpen(false)}>Cancel</button>
         </>
       ) : <button type="button" onClick={() => { setOpen(true); setMsg(null); }}>Schedule this search</button>}
-      {msg && <span className={styles.muted}>{msg}</span>}
+      <span role="status" className={styles.muted}>{msg}</span>
     </form>
   );
 }
